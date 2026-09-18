@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Drift } from './Drift.tsx'
 import './page.css'
 
 /**
@@ -39,6 +40,8 @@ export function Page() {
       </div>
 
       <div className="band" />
+
+      <Drift />
 
       <div className="split">
         <div className="swatches">

@@ -74,3 +74,56 @@
 }
 .page .card button:hover { background: #ff0033; }
 .page .card button:focus-visible { outline: 2px solid #00e5ff; outline-offset: 2px; }
+
+/* ---- animated specimens ---------------------------------------------------
+   Captions are mono because they are labels, not voice — the page's voice
+   stays Fraunces. They sit inside the captured area on purpose: 11px type is
+   itself a ringing specimen. */
+.page .spec { margin: 20px 0 0; }
+.page .spec figcaption {
+  font: 10px/1.4 ui-monospace, Menlo, monospace;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #6b6862;
+  margin-top: 5px;
+}
+
+/* Full-bleed: the longest uninterrupted ramp the sheet can give, which is what
+   makes banding legible. Cancels the page's own side padding. */
+.page .spec-ramp { margin-left: -32px; margin-right: -32px; }
+.page .spec-ramp .ramp {
+  height: 108px;
+  /* Painted by rAF into the inline style. This is the initial value only —
+     see the header comment in Drift.tsx for why it cannot be a CSS animation. */
+  background-image: linear-gradient(97deg, hsl(0 64% 13%) 0%, hsl(150 52% 87%) 100%);
+}
+.page .spec-ramp figcaption { padding-left: 32px; }
+
+.page .spec-drift .field {
+  position: relative;
+  height: 210px;
+  overflow: hidden;
+  /*
+   * A SATURATED MID-TONE, not the near-black this started as. Two reasons, both measured:
+   * a flat black ground gets allocated almost no bits, so a thin bright object moving over it
+   * is crushed to disconnected blocks (verified: illegible at q60) — and smear against black
+   * is invisible anyway, which loses the very artifact the specimen exists to show. A mid
+   * luma keeps the encoder spending bits here, and a saturated hue means the moving edge
+   * also bleeds chroma into the glyphs. Ties to the page's existing red/cyan chord.
+   */
+  background: #0f6b75;
+}
+.page .spec-drift .word {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  font-family: Fraunces, Georgia, serif;
+  /* Real use of the variable opsz axis: a display cut, not the text cut scaled up. */
+  font-variation-settings: 'opsz' 144, 'wght' 700;
+  font-size: clamp(56px, 13vw, 104px);
+  line-height: 1;
+  color: #f7f5f1;
+  white-space: nowrap;
+  will-change: left, top, transform;
+}
