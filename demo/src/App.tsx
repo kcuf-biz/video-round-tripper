@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { RoundTrip } from '@video-round-tripper/roundtrip'
 import { Controls, DEFAULTS, moshFrom, type Knobs } from './Controls.tsx'
 import { Page } from './content/Page.tsx'
+import { DeviceInfo } from './DeviceInfo.tsx'
 
 export function App() {
   const [k, setK] = useState<Knobs>(DEFAULTS)
@@ -22,7 +23,10 @@ export function App() {
       >
         <Page />
       </RoundTrip>
-      <Controls k={k} set={set} />
+      <div>
+        <Controls k={k} set={set} />
+        <DeviceInfo />
+      </div>
     </div>
   )
 }

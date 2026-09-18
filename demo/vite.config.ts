@@ -8,7 +8,14 @@ export default defineConfig({
     // machine. strictPort so a collision fails loudly instead of silently moving.
     port: 5394,
     strictPort: true,
+    // Stays bound to loopback even when reached over the tailnet: `tailscale serve`
+    // terminates TLS and proxies in, so the dev server itself is never on a network
+    // interface. That also supplies the SECURE CONTEXT that WebCodecs requires — over plain
+    // http:// to a tailnet IP, VideoEncoder is simply undefined and the piece cannot run.
     host: '127.0.0.1',
+    // Vite rejects requests whose Host header it does not recognise (DNS-rebinding guard).
+    // Scoped to this tailnet's domain rather than `true`, which would allow any host.
+    allowedHosts: ['.ts.net'],
   },
   optimizeDeps: {
     // The roundtrip package ships TypeScript source with no build step (the a source-only workspace

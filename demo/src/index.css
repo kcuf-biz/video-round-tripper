@@ -64,3 +64,11 @@ body {
 }
 .check { display: flex; align-items: center; gap: 7px; font-size: 12px; }
 .note { font-size: 11px; color: var(--muted); line-height: 1.45; margin-top: 10px; }
+
+.panel pre.device {
+  font: 11px/1.55 var(--mono);
+  color: var(--muted);
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
