@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { createPacer, encodeSize, shouldDropForBackpressure } from './frameBudget.ts'
+import { createPacer, encodeSize, isAwake, shouldDropForBackpressure } from './frameBudget.ts'
 
 describe('encodeSize', () => {
   it('always returns even dimensions (4:2:0 chroma subsampling requires it)', () => {
@@ -33,5 +33,17 @@ describe('shouldDropForBackpressure', () => {
     expect(shouldDropForBackpressure(0, 4)).toBe(false)
     expect(shouldDropForBackpressure(3, 4)).toBe(false)
     expect(shouldDropForBackpressure(4, 4)).toBe(true)
+  })
+})
+
+describe('isAwake', () => {
+  it('continuous mode is always awake, whatever the wake clock says', () => {
+    expect(isAwake('continuous', 10_000, 0, 600)).toBe(true)
+  })
+
+  it('on-interaction stays awake for the wake window after the last interaction', () => {
+    expect(isAwake('on-interaction', 1000, 1000, 600)).toBe(true)
+    expect(isAwake('on-interaction', 1600, 1000, 600)).toBe(true) // inclusive edge
+    expect(isAwake('on-interaction', 1601, 1000, 600)).toBe(false)
   })
 })

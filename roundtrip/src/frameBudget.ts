@@ -41,3 +41,23 @@ export function encodeSize(
   const even = (n: number) => Math.max(2, Math.round((n * s) / 2) * 2)
   return { width: even(width), height: even(height) }
 }
+
+/**
+ * Whether 'on-interaction' mode is currently awake.
+ *
+ * Pulled out as a pure function deliberately: the rAF loop that calls it cannot be verified in
+ * a backgrounded tab (Chrome suspends requestAnimationFrame when visibilityState is 'hidden'),
+ * so the decision logic is tested here instead and the untestable surface is kept to the
+ * scheduling call itself.
+ */
+export const WAKE_MS = 600
+
+export function isAwake(
+  mode: 'continuous' | 'on-interaction',
+  now: number,
+  wokeAt: number,
+  wakeMs = WAKE_MS,
+): boolean {
+  if (mode === 'continuous') return true
+  return now - wokeAt <= wakeMs
+}

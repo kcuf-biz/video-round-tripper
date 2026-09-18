@@ -12,6 +12,7 @@ export interface Knobs {
   dropKeyframesAfter: number
   dropDeltaChance: number
   codec: string
+  captureMode: 'continuous' | 'on-interaction'
 }
 
 export const DEFAULTS: Knobs = {
@@ -26,6 +27,7 @@ export const DEFAULTS: Knobs = {
   dropKeyframesAfter: 0,
   dropDeltaChance: 0,
   codec: 'auto',
+  captureMode: 'continuous',
 }
 
 export function moshFrom(k: Knobs): MoshConfig | false {
@@ -87,6 +89,17 @@ export function Controls({ k, set }: { k: Knobs; set: (n: Partial<Knobs>) => voi
           type="range" min={1} max={120} step={1} value={k.declaredFramerate}
           onChange={(e) => set({ declaredFramerate: +e.target.value })}
         />
+      </div>
+
+      <div className="row">
+        <label>capture mode</label>
+        <select
+          value={k.captureMode}
+          onChange={(e) => set({ captureMode: e.target.value as Knobs['captureMode'] })}
+        >
+          <option value="continuous">continuous</option>
+          <option value="on-interaction">on interaction only</option>
+        </select>
       </div>
 
       <div className="row">

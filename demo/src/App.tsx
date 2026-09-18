@@ -14,6 +14,7 @@ export function App() {
         coarseness={k.coarseness}
         encodeScale={k.encodeScale}
         captureFps={k.captureFps}
+        captureMode={k.captureMode}
         declaredFramerate={k.declaredFramerate}
         codec={k.codec}
         gop={k.gopInfinite ? 'infinite' : k.gop}

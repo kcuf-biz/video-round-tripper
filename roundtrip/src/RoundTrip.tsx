@@ -3,7 +3,7 @@ import type { CaptureSource, RoundTripProps } from './types.ts'
 import { createForeignObjectSource } from './capture/foreignObjectSource.ts'
 import { probeCodec } from './codec/probe.ts'
 import { createPipeline, type Pipeline } from './codec/pipeline.ts'
-import { createPacer, encodeSize } from './frameBudget.ts'
+import { createPacer, encodeSize, isAwake, WAKE_MS } from './frameBudget.ts'
 import './roundtrip.css'
 
 /**
@@ -135,6 +135,7 @@ export function RoundTrip(props: RoundTripProps) {
     let source: CaptureSource | null = null
     let pipeline: Pipeline | null = null
     let inFlight = false
+    let detachWake: (() => void) | undefined
 
     const fail = (e: Error) => {
       if (cancelled) return
@@ -182,10 +183,33 @@ export function RoundTrip(props: RoundTripProps) {
       setMessage(`${choice.codec} · ${choice.hardwareAcceleration} · ${choice.bitrateMode}`)
 
       const pacer = createPacer(dials.current.captureFps)
+
+      /*
+       * 'on-interaction' exists for the case where the rasterizer is too slow to run
+       * continuously on a given page. It captures for a short window after anything actually
+       * changes — pointer, scroll, focus, keystroke — and otherwise lets the last decoded
+       * frame stand. The page then visibly macroblocks while you touch it and freezes, still
+       * artifact-ridden, when you stop.
+       */
+      let wokeAt = performance.now()
+      const wake = () => {
+        wokeAt = performance.now()
+      }
+      const WAKE_EVENTS = ['pointermove', 'pointerdown', 'wheel', 'keydown', 'focusin', 'input'] as const
+      if (captureMode === 'on-interaction') {
+        for (const ev of WAKE_EVENTS) content.addEventListener(ev, wake, { passive: true })
+        window.addEventListener('scroll', wake, { passive: true })
+        detachWake = () => {
+          for (const ev of WAKE_EVENTS) content.removeEventListener(ev, wake)
+          window.removeEventListener('scroll', wake)
+        }
+      }
+
       const tick = async () => {
         if (cancelled) return
         raf = requestAnimationFrame(tick)
         const now = performance.now()
+        if (!isAwake(captureMode, now, wokeAt, WAKE_MS)) return
         if (inFlight || !pacer.due(now)) return
         pacer.mark(now)
         inFlight = true
@@ -208,6 +232,7 @@ export function RoundTrip(props: RoundTripProps) {
     return () => {
       cancelled = true
       cancelAnimationFrame(raf)
+      detachWake?.()
       pipeline?.close()
       if (!externalSource) source?.dispose()
       pipeRef.current = null
