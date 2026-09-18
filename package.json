@@ -1,0 +1,20 @@
+{
+  "name": "video-round-tripper",
+  "private": true,
+  "type": "module",
+  "version": "0.1.0",
+  "workspaces": ["roundtrip", "demo"],
+  "scripts": {
+    "dev": "npm run dev -w demo",
+    "build": "npm run build -w demo",
+    "preview": "npm run preview -w demo",
+    "typecheck": "tsc --noEmit -p roundtrip && tsc --noEmit -p demo",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.2",
+    "vite": "^6.0.5",
+    "vitest": "^3.0.5"
+  }
+}

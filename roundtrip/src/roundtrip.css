@@ -1,0 +1,53 @@
+/*
+ * The occlusion layer.
+ *
+ * The canvas must be OPAQUE and cover the content exactly. It must never receive events and
+ * never enter the accessibility tree — the real DOM underneath does both.
+ */
+.rt-root {
+  position: relative;
+  isolation: isolate; /* keep the overlay out of the host page's stacking games */
+}
+
+.rt-content {
+  /*
+   * Deliberately NOT visibility:hidden, display:none or opacity:0. All three break capture
+   * (the first two also drop out of the a11y tree and stop hit-testing). The content stays
+   * fully painted and fully interactive; it is simply covered up.
+   */
+  position: relative;
+  z-index: 0;
+}
+
+.rt-canvas {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  display: block;
+  pointer-events: none; /* the browser hit-tests straight through to the real element */
+  background: canvas;
+}
+
+/* Nothing is painted until the first frame decodes; until then, show the real content. */
+.rt-root[data-status='idle'] .rt-canvas,
+.rt-root[data-status='unsupported'] .rt-canvas,
+.rt-root[data-status='error'] .rt-canvas {
+  display: none;
+}
+
+.rt-status {
+  position: absolute;
+  z-index: 2;
+  left: 0;
+  bottom: 0;
+  font: 11px ui-monospace, Menlo, monospace;
+  color: #b00;
+  background: #fff;
+  padding: 2px 6px;
+  pointer-events: none;
+}
+.rt-status:empty {
+  display: none;
+}
