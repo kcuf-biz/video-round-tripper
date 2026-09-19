@@ -81,7 +81,7 @@ gets, so this is worth doing.
 ---
 import { RoundTrip } from '@video-round-tripper/roundtrip'
 ---
-<RoundTrip client:load coarseness={0.8} class="stage">
+<RoundTrip client:load coarseness={0.8} className="stage">
   <slot />
   <h1>Whatever the page already was</h1>
   <p>Static HTML is ideal here — it is exactly what capture wants.</p>
@@ -93,6 +93,14 @@ without a client directive the island never hydrates, so nothing ever mounts and
 plain children. Astro renders the slotted children to static HTML and hands them to the island
 as `children`, which is the best case for the rasterizer: no framework state to project, no
 hydration mismatch to capture mid-flight.
+
+`className`, not `class`: the props go straight to a React component. And **style the stage
+from a global sheet, not a scoped `<style>`.** Astro rewrites a component's
+`<style>` to `.stage[data-astro-cid-…]`, and the root div is created by React inside the
+island, so it never carries that attribute and the rule silently does not apply. Measured in a
+consumer app: with a scoped rule the root came out 268px tall instead of `100vh`, which is not
+an error — it just quietly stops being a scroll container. `<style is:global>`, a global
+stylesheet, or an inline `style={{ height: '100dvh' }}` all work.
 
 ### A plain page, no framework
 
