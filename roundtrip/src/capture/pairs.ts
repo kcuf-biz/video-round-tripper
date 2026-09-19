@@ -51,3 +51,17 @@ export function pairElements(source: Element, clone: Element): ElementPair[] {
   for (let i = 0; i < src.length && i < dst.length; i++) out.push(makePair(src[i]!, dst[i]!))
   return out
 }
+
+/**
+ * Pair the DESCENDANTS of two roots, without pairing the roots themselves.
+ *
+ * For a shadow root and the fragment it was cloned into: neither root is an element, and there
+ * is nothing to project onto a DocumentFragment anyway.
+ */
+export function pairDescendants(source: ParentNode, clone: ParentNode): ElementPair[] {
+  const src = Array.from(source.querySelectorAll('*'))
+  const dst = Array.from(clone.querySelectorAll('*'))
+  const out: ElementPair[] = []
+  for (let i = 0; i < src.length && i < dst.length; i++) out.push(makePair(src[i]!, dst[i]!))
+  return out
+}

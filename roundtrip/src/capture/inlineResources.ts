@@ -20,9 +20,13 @@
  */
 
 import { collectCss, bytesToBase64, mimeFor } from './cssResources.ts'
-import { pairElements, type ElementPair } from './pairs.ts'
+import { pairDescendants, pairElements, type ElementPair } from './pairs.ts'
 import { replaceUnserializable } from './replaceUnserializable.ts'
 import { emptyReport, type CaptureReport } from './report.ts'
+import { syncScrollState } from './positioning.ts'
+import { flattenShadowRoots } from './shadowDom.ts'
+
+export { syncScrollState } from './positioning.ts'
 
 /**
  * Cumulative across the cache's life, because the bytes are: a font that refused CORS on the
@@ -64,6 +68,12 @@ async function fetchBytes(url: string): Promise<{ bytes: Uint8Array; type: strin
   } catch {
     return null // opaque / blocked by CORS — the caller degrades rather than throws
   }
+}
+
+/** Nodes whose arrival or departure changes what the page's CSS is. */
+function isStyleNode(n: Node): boolean {
+  if (!(n instanceof Element)) return false
+  return n.localName === 'style' || (n.localName === 'link' && (n as HTMLLinkElement).rel === 'stylesheet')
 }
 
 export function createResourceCache(doc: Document = document): ResourceCache {
@@ -125,8 +135,40 @@ export function createResourceCache(doc: Document = document): ResourceCache {
       pending = null
       resources.clear()
       texts.clear()
+      watcher?.disconnect()
     },
   }
+
+  /*
+   * The CSS blob is built once and reused for the life of the cache, which is the only reason
+   * capture is affordable at all (229ms cold, ~5ms/frame warm). The cost of that is a cache
+   * that goes stale the moment the page adds a stylesheet — an Astro view transition, a lazily
+   * imported component, a Vite HMR update — and a stale blob does not error. It renders the
+   * previous page's styling, silently, forever.
+   *
+   * Watching <head> is the cheap fix: style nodes essentially always land there, the callback
+   * only fires on real mutations, and invalidation is just dropping a promise. Font and image
+   * bytes are keyed by URL and deliberately survive it.
+   */
+  const watcher =
+    typeof MutationObserver === 'undefined' || !doc.head
+      ? null
+      : new MutationObserver((records) => {
+          for (const r of records) {
+            if (r.type === 'attributes') {
+              if (isStyleNode(r.target)) return cache.invalidate()
+              continue
+            }
+            for (const n of Array.from(r.addedNodes)) if (isStyleNode(n)) return cache.invalidate()
+            for (const n of Array.from(r.removedNodes)) if (isStyleNode(n)) return cache.invalidate()
+          }
+        })
+  watcher?.observe(doc.head, {
+    childList: true,
+    subtree: true,
+    attributes: true,
+    attributeFilter: ['href', 'rel', 'media', 'disabled'],
+  })
 
   return cache
 }
@@ -139,12 +181,8 @@ export function createResourceCache(doc: Document = document): ResourceCache {
  *
  * So: project live form state onto the clone as attributes, which DO survive serialization.
  */
-export function syncFormState(source: Element, clone: Element): void {
-  const src = source.querySelectorAll('input, textarea, select, progress, meter')
-  const dst = clone.querySelectorAll('input, textarea, select, progress, meter')
-  for (let i = 0; i < src.length && i < dst.length; i++) {
-    const s = src[i]!
-    const d = dst[i]!
+export function syncFormState(pairs: readonly ElementPair[]): void {
+  for (const { src: s, dst: d } of pairs) {
     if (s instanceof HTMLInputElement && d instanceof HTMLInputElement) {
       d.setAttribute('value', s.value)
       if (s.checked) d.setAttribute('checked', '')
@@ -165,120 +203,6 @@ export function syncFormState(source: Element, clone: Element): void {
     }
   }
 }
-
-/**
- * Scroll position is a PROPERTY, not an attribute, so cloneNode() drops it: a scrolled
- * container would capture as though it were scrolled to the top. Same class of problem as
- * form state, and it matters more here, because the component is designed to own a scroll
- * container so the canvas can stay put while the content moves under it.
- *
- * The clone renders in a separate document where scrollTop means nothing, so the scrolled
- * appearance has to be reproduced geometrically: clip the scroller and shift its children.
- *
- * WHY EACH CHILD RATHER THAN ONE WRAPPER: wrapping a scroller's children in a single
- * translated div is the obvious implementation and it is wrong. If the scroller is a flex or
- * grid container the wrapper becomes its only item and the whole layout collapses; it also
- * breaks any `>` child selector. Transforming each child individually shifts them all by the
- * same amount — which is exactly what scrolling looks like — while touching neither layout
- * nor selector matching, because transforms are paint-only.
- */
-export function syncScrollState(source: Element, clone: Element): void {
-  const src = [source, ...Array.from(source.querySelectorAll('*'))]
-  const dst = [clone, ...Array.from(clone.querySelectorAll('*'))]
-
-  for (let i = 0; i < src.length && i < dst.length; i++) {
-    const s = src[i]!
-    const top = s.scrollTop
-    const left = s.scrollLeft
-    if (top === 0 && left === 0) continue
-
-    const d = dst[i]
-    if (!(d instanceof HTMLElement)) continue
-    d.style.overflow = 'hidden'
-
-    const srcKids = Array.from(s.children)
-    const dstKids = Array.from(d.children)
-    for (let j = 0; j < srcKids.length && j < dstKids.length; j++) {
-      const sk = srcKids[j]!
-      const dk = dstKids[j]
-      if (!(dk instanceof HTMLElement)) continue
-      // A fixed child is anchored to the viewport, not to the scroller: it must NOT move.
-      if (getComputedStyle(sk).position === 'fixed') continue
-      // Preserve whatever transform the child already had; the scroll offset composes as the
-      // OUTERMOST operation (rightmost applies first), so the element is shifted after its
-      // own transform rather than instead of it.
-      const existing = getComputedStyle(sk).transform
-      const own = existing && existing !== 'none' ? ' ' + existing : ''
-      dk.style.transform = `translate(${-left}px, ${-top}px)${own}`
-    }
-  }
-
-  /*
-   * position:fixed must hold still while the page scrolls under it, and it is the single
-   * trickiest thing in this file, because **a transformed element becomes the containing
-   * block for its fixed descendants**. Shifting the scroller's children therefore re-anchors
-   * every fixed element below them, silently.
-   *
-   * Compensating with an equal-and-opposite translate is the obvious repair and it is WRONG.
-   * It happens to work for `top`-anchored elements, which is exactly why it looks right at
-   * first: measured, a top-anchored header went from 17% to 100% identical across a 400px
-   * scroll. But a `bottom`-anchored element re-anchors to the bottom of the whole 300vh page
-   * rather than the viewport, so it renders far outside the frame and no translate brings it
-   * back — the anchor changed, not the offset.
-   *
-   * So: convert to absolute against whatever the clone's containing block will actually be,
-   * using coordinates measured from the live DOM. Offsets measured relative to that block
-   * already account for the scroll, because the block itself is shifted by the same amount.
-   */
-  const clonedTransform = (p: HTMLElement): boolean => {
-    const par = p.parentElement
-    return (
-      !!par &&
-      (par.scrollTop !== 0 || par.scrollLeft !== 0) &&
-      getComputedStyle(p).position !== 'fixed'
-    )
-  }
-
-  /** The ancestor the clone will position this element against. */
-  const containingBlock = (el: HTMLElement): HTMLElement | null => {
-    for (let p = el.parentElement; p; p = p.parentElement) {
-      const cs = getComputedStyle(p)
-      if (
-        p === source ||
-        cs.position !== 'static' ||
-        cs.transform !== 'none' ||
-        cs.filter !== 'none' ||
-        cs.perspective !== 'none' ||
-        /transform|filter|perspective/.test(cs.willChange) ||
-        clonedTransform(p) // static in the source, transformed once we shift it
-      ) {
-        return p
-      }
-    }
-    return null
-  }
-
-  for (let i = 0; i < src.length && i < dst.length; i++) {
-    const s = src[i]!
-    if (!(s instanceof HTMLElement)) continue
-    if (getComputedStyle(s).position !== 'fixed') continue
-    const cb = containingBlock(s)
-    if (!cb) continue
-
-    const d = dst[i]
-    if (!(d instanceof HTMLElement)) continue
-    const r = s.getBoundingClientRect()
-    const cbr = cb.getBoundingClientRect()
-    d.style.position = 'absolute'
-    d.style.left = `${r.left - cbr.left}px`
-    d.style.top = `${r.top - cbr.top}px`
-    // The offsets above are complete on their own; any of these left set would fight them.
-    d.style.right = 'auto'
-    d.style.bottom = 'auto'
-    d.style.margin = '0'
-  }
-}
-
 
 /**
  * Every capture pass, over one source/clone pair, in the only order that works.
@@ -306,14 +230,20 @@ export async function prepareClone(
   clone: Element,
   cache: ResourceCache,
 ): Promise<PreparedClone> {
-  const pairs: ElementPair[] = pairElements(source, clone)
   const report = emptyReport()
 
-  syncFormState(source, clone)
-  syncScrollState(source, clone)
-  await replaceUnserializable(pairs, cache, report)
+  /** The three index-matched passes, plus shadow flattening, over one paired subtree. */
+  const runPasses = async (pairs: ElementPair[]): Promise<string> => {
+    syncFormState(pairs)
+    syncScrollState(source, pairs)
+    await replaceUnserializable(pairs, cache, report)
+    // Last, and recursive: it is the only pass that adds nodes with no source counterpart.
+    return flattenShadowRoots(pairs, cache, report, runPasses, pairDescendants)
+  }
+
+  const extraCss = await runPasses(pairElements(source, clone))
 
   report.missingFonts = cache.stats.missingFonts
   report.blockedImages += cache.stats.blockedImages
-  return { extraCss: '', report }
+  return { extraCss, report }
 }
