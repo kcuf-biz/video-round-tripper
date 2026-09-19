@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>round tripper — hostile page</title>
+    <!--
+      Linked rather than imported from TypeScript on purpose. Vite copies /public verbatim, so
+      this sheet reaches the browser with its relative url()s intact and its own href one
+      directory ABOVE this document — which is what makes it a real test of resolving url()
+      against the sheet rather than against the page. See the file's own header.
+    -->
+    <link rel="stylesheet" href="/hostile-external.css" />
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/hostile.tsx"></script>
+  </body>
+</html>

@@ -1,10 +1,6 @@
-import type { CaptureSource } from '../types.ts'
-import {
-  createResourceCache,
-  syncFormState,
-  syncScrollState,
-  type ResourceCache,
-} from './inlineResources.ts'
+import type { CaptureReport, CaptureSource } from '../types.ts'
+import { createResourceCache, prepareClone, type ResourceCache } from './inlineResources.ts'
+import { emptyReport } from './report.ts'
 
 /**
  * The default capture path: serialize the live element into an SVG <foreignObject>, load it
@@ -13,6 +9,12 @@ import {
  * Measured on the spike page (860x540, six webfont faces, Chrome 150 / macOS):
  *   8ms median, 18ms p95  -> ~125fps, untainted, full font fidelity.
  * That is ~3x faster than the best library tried (snapdom, 22ms) with no dependency.
+ *
+ * Re-measured after the hardening passes landed, same machine:
+ *   demo page,    1920x885, no media:            4.2ms median, 12.4ms p95
+ *   hostile page, 1920x885, canvas + 2 video:   12.6ms median, 17.4ms p95
+ * Phase breakdown on the hostile page: clone 0.2ms, prepareClone 11.8ms, serialize 0.7ms,
+ * encodeURIComponent 1.3ms, img.decode 1.1ms. Both pages stay realtime at 30fps.
  *
  * TWO NON-OBVIOUS REQUIREMENTS, both verified rather than assumed:
  *
@@ -44,6 +46,9 @@ export function createForeignObjectSource(
   const scratch = document.createElement('canvas')
   const ctx = scratch.getContext('2d', { alpha: false, willReadFrequently: false })
   let disposed = false
+  // What the LAST grab could not reproduce, not a running total: "what is this page degrading
+  // on right now" is the question the report answers.
+  let last: CaptureReport = emptyReport()
 
   async function grab(timestamp: number): Promise<VideoFrame> {
     if (disposed) throw new Error('capture source disposed')
@@ -53,13 +58,15 @@ export function createForeignObjectSource(
 
     const css = await cache.css()
     const clone = element.cloneNode(true) as HTMLElement
-    syncFormState(element, clone)
-    syncScrollState(element, clone)
+    const prepared = await prepareClone(element, clone, cache)
+    last = prepared.report
 
     const xml = new XMLSerializer().serializeToString(clone)
     const svg =
       `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}">` +
-      `<defs><style type="text/css"><![CDATA[${css}]]></style></defs>` +
+      // extraCss last so a flattened shadow tree's rules win over anything the page declared
+      // for the same host element — which is what the shadow boundary does in the live DOM.
+      `<defs><style type="text/css"><![CDATA[${css}\n${prepared.extraCss}]]></style></defs>` +
       `<foreignObject width="100%" height="100%">` +
       `<div xmlns="http://www.w3.org/1999/xhtml">${xml}</div>` +
       `</foreignObject></svg>`
@@ -80,6 +87,7 @@ export function createForeignObjectSource(
 
   return {
     grab,
+    report: () => last,
     dispose() {
       disposed = true
       if (ownsCache) cache.dispose()
