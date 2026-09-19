@@ -121,12 +121,19 @@ export interface CodecDials {
  * as displaced macroblocks, and VP9's is a guaranteed no-op under an infinite GOP, so for both
  * of them moshing is opt-in and the default is straight compression.
  *
+ * keepEveryNthKeyframe is what gives AVC and HEVC the RHYTHM that AV1 and VP9 get for free
+ * from decoder death. Their decoders survive a dropped keyframe indefinitely, so error only
+ * accumulates and the pipeline's recovery keyframe — which is what snaps AV1 back to clean —
+ * never fires; measured on AVC at coarseness 0.78, error against the source went 3.8 -> 18 at
+ * the dropped key and climbed to 24 with no recovery at all. Letting every 3rd keyframe
+ * through restores bloom -> collapse -> snap, which is the look, instead of a one-way decay.
+ *
  * coarseness 0.78 across all four so the dial reads the same after a codec switch. (The plan
  * left VP9's unstated; matching the others is the least surprising answer.)
  */
 export const CODEC_DEFAULTS: Record<CodecFamily, CodecDials> = {
-  avc: { coarseness: 0.78, gop: 20, mosh: { dropKeyframesAfter: 0, seed: 1 } },
-  hevc: { coarseness: 0.78, gop: 20, mosh: { dropKeyframesAfter: 0, seed: 1 } },
+  avc: { coarseness: 0.78, gop: 20, mosh: { dropKeyframesAfter: 0, keepEveryNthKeyframe: 3, seed: 1 } },
+  hevc: { coarseness: 0.78, gop: 20, mosh: { dropKeyframesAfter: 0, keepEveryNthKeyframe: 3, seed: 1 } },
   av1: { coarseness: 0.78, gop: 'infinite', mosh: false },
   vp9: { coarseness: 0.78, gop: 'infinite', mosh: false },
 }

@@ -34,6 +34,47 @@ describe('createMoshFilter', () => {
     expect(f.decide('key', 11)).toBe('drop')
   })
 
+  it('keeps every Nth eligible keyframe, dropping the first so it blooms before it snaps', () => {
+    const f = createMoshFilter({ dropKeyframesAfter: 0, keepEveryNthKeyframe: 2 })
+    expect(f.decide('key', 0)).toBe('pass') // priming; not eligible, so it does not count
+    expect(f.decide('key', 20)).toBe('drop') // 1st eligible: bloom starts
+    expect(f.decide('key', 40)).toBe('pass') // 2nd: snap back to clean
+    expect(f.decide('key', 60)).toBe('drop')
+    expect(f.decide('key', 80)).toBe('pass')
+  })
+
+  it('counts ELIGIBLE keyframes, so dropKeyframesAfter does not shift the rhythm', () => {
+    const f = createMoshFilter({ dropKeyframesAfter: 50, keepEveryNthKeyframe: 3 })
+    f.decide('key', 0)
+    // Everything up to the threshold passes and must not advance the count.
+    expect(f.decide('key', 20)).toBe('pass')
+    expect(f.decide('key', 50)).toBe('pass')
+    expect(f.decide('key', 60)).toBe('drop')
+    expect(f.decide('key', 70)).toBe('drop')
+    expect(f.decide('key', 80)).toBe('pass') // the 3rd eligible one
+  })
+
+  it('keeps dropping every keyframe when keepEveryNthKeyframe is unset or 0', () => {
+    for (const cfg of [{ dropKeyframesAfter: 0 }, { dropKeyframesAfter: 0, keepEveryNthKeyframe: 0 }]) {
+      const f = createMoshFilter(cfg)
+      f.decide('key', 0)
+      expect([f.decide('key', 1), f.decide('key', 2), f.decide('key', 3)]).toEqual([
+        'drop',
+        'drop',
+        'drop',
+      ])
+    }
+  })
+
+  it('reset re-arms the keep rhythm too, so a restart looks like the first run', () => {
+    const f = createMoshFilter({ dropKeyframesAfter: 0, keepEveryNthKeyframe: 2 })
+    f.decide('key', 0)
+    expect(f.decide('key', 1)).toBe('drop')
+    f.reset()
+    f.decide('key', 2) // primes again
+    expect(f.decide('key', 3)).toBe('drop') // counting from the start, not mid-cycle
+  })
+
   it('is deterministic for a given seed, so a look is reproducible', () => {
     const run = () => {
       const f = createMoshFilter({ dropDeltaChance: 0.5, seed: 42 })
@@ -78,9 +119,11 @@ describe('priming across filter swaps (regression)', () => {
 
 describe('sameMoshConfig', () => {
   it('compares by value, so a re-rendering caller does not churn the filter', () => {
-    const a = { dropKeyframesAfter: 0, dropDeltaChance: 0.2, seed: 1 }
+    const a = { dropKeyframesAfter: 0, keepEveryNthKeyframe: 3, dropDeltaChance: 0.2, seed: 1 }
     expect(sameMoshConfig(a, { ...a })).toBe(true)
     expect(sameMoshConfig(a, { ...a, seed: 2 })).toBe(false)
+    // Without this the panel's keep slider would move and the filter would never be rebuilt.
+    expect(sameMoshConfig(a, { ...a, keepEveryNthKeyframe: 2 })).toBe(false)
     expect(sameMoshConfig(false, false)).toBe(true)
     expect(sameMoshConfig(false, a)).toBe(false)
   })

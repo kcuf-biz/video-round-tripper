@@ -29,6 +29,7 @@ export interface Knobs {
   gop: number
   mosh: boolean
   dropKeyframesAfter: number
+  keepEveryNthKeyframe: number
   dropDeltaChance: number
   codec: string
   captureMode: 'continuous' | 'on-interaction'
@@ -45,6 +46,7 @@ export const DEFAULTS: Knobs = {
   gop: 30,
   mosh: false,
   dropKeyframesAfter: 0,
+  keepEveryNthKeyframe: 0,
   dropDeltaChance: 0,
   codec: 'auto',
   captureMode: 'continuous',
@@ -55,7 +57,15 @@ export const DEFAULTS: Knobs = {
  * auto: the alternative is a checkbox the user has to remember to uncheck before the slider
  * they are already dragging does anything, which reads as the slider being broken.
  */
-const DIAL_KEYS = ['coarseness', 'gopInfinite', 'gop', 'mosh', 'dropKeyframesAfter', 'dropDeltaChance'] as const
+const DIAL_KEYS = [
+  'coarseness',
+  'gopInfinite',
+  'gop',
+  'mosh',
+  'dropKeyframesAfter',
+  'keepEveryNthKeyframe',
+  'dropDeltaChance',
+] as const
 
 export function touchesDials(patch: Partial<Knobs>): boolean {
   return DIAL_KEYS.some((key) => key in patch)
@@ -65,6 +75,7 @@ export function moshFrom(k: Knobs): MoshConfig | false {
   if (!k.mosh) return false
   return {
     dropKeyframesAfter: k.dropKeyframesAfter,
+    keepEveryNthKeyframe: k.keepEveryNthKeyframe,
     dropDeltaChance: k.dropDeltaChance,
     seed: 1,
   }
@@ -88,6 +99,7 @@ export function knobsFromDials(prev: Knobs, d: CodecDials): Knobs {
     gop: typeof d.gop === 'number' ? d.gop : prev.gop,
     mosh: !!d.mosh,
     dropKeyframesAfter: d.mosh ? (d.mosh.dropKeyframesAfter ?? 0) : 0,
+    keepEveryNthKeyframe: d.mosh ? (d.mosh.keepEveryNthKeyframe ?? 0) : 0,
     dropDeltaChance: d.mosh ? (d.mosh.dropDeltaChance ?? 0) : 0,
   }
 }
@@ -96,6 +108,7 @@ export function knobsFromDials(prev: Knobs, d: CodecDials): Knobs {
 export function describeMosh(mosh: CodecDials['mosh']): string {
   if (!mosh) return 'off'
   const parts = [`drop keys after ${mosh.dropKeyframesAfter ?? 0}`]
+  if (mosh.keepEveryNthKeyframe) parts.push(`keep every ${mosh.keepEveryNthKeyframe}`)
   if (mosh.dropDeltaChance) parts.push(`${Math.round(mosh.dropDeltaChance * 100)}% deltas`)
   return parts.join(' · ')
 }
@@ -106,6 +119,10 @@ export function describeMosh(mosh: CodecDials['mosh']): string {
  * how often that can happen: there is nothing to drop between keyframes. dropDeltaChance
  * tears without needing keyframes at all, which is the only thing that does anything when
  * keyframes are switched off entirely.
+ *
+ * Each one states every mosh knob it depends on, keepEveryNthKeyframe included: a preset that
+ * left one unset would inherit whatever the last preset put there and would not be the look
+ * it is named after. "tearing only" sets it to 0 on purpose — there are no keyframes to keep.
  */
 export const PRESETS: { name: string; hint: string; knobs: Partial<Knobs> }[] = [
   {
@@ -116,17 +133,17 @@ export const PRESETS: { name: string; hint: string; knobs: Partial<Knobs> }[] = 
   {
     name: 'occasional bloom',
     hint: 'mostly coherent, collapses now and then — the classic datamosh',
-    knobs: { mosh: true, gopInfinite: false, gop: 20, dropKeyframesAfter: 0, dropDeltaChance: 0, coarseness: 0.8 },
+    knobs: { mosh: true, gopInfinite: false, gop: 20, dropKeyframesAfter: 0, keepEveryNthKeyframe: 3, dropDeltaChance: 0, coarseness: 0.8 },
   },
   {
     name: 'constant churn',
     hint: 'never settles; busier and choppier',
-    knobs: { mosh: true, gopInfinite: false, gop: 8, dropKeyframesAfter: 0, dropDeltaChance: 0, coarseness: 0.82 },
+    knobs: { mosh: true, gopInfinite: false, gop: 8, dropKeyframesAfter: 0, keepEveryNthKeyframe: 4, dropDeltaChance: 0, coarseness: 0.82 },
   },
   {
     name: 'tearing only',
     hint: 'continuous decay, no keyframes involved',
-    knobs: { mosh: true, gopInfinite: true, dropKeyframesAfter: 0, dropDeltaChance: 0.08, coarseness: 0.8 },
+    knobs: { mosh: true, gopInfinite: true, dropKeyframesAfter: 0, keepEveryNthKeyframe: 0, dropDeltaChance: 0.08, coarseness: 0.8 },
   },
 ]
 
@@ -302,6 +319,19 @@ export function Controls({
               type="range" min={0} max={120} step={1} value={k.dropKeyframesAfter}
               onChange={(e) => set({ dropKeyframesAfter: +e.target.value })}
             />
+          </div>
+          <div className="row">
+            <label>
+              keep every Nth keyframe <b>{k.keepEveryNthKeyframe || 'never'}</b>
+            </label>
+            <input
+              type="range" min={0} max={8} step={1} value={k.keepEveryNthKeyframe}
+              onChange={(e) => set({ keepEveryNthKeyframe: +e.target.value })}
+            />
+            <p className="note">
+              0 never recovers: on AVC/HEVC the decoder survives a dropped keyframe, so error
+              only accumulates. 2 snaps the picture back to clean every ~1.3s at GOP 20.
+            </p>
           </div>
           <div className="row">
             <label>

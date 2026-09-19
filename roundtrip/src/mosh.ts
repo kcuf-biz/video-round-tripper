@@ -44,9 +44,13 @@ export function createMoshFilter(cfg: MoshConfig | false, alreadyPrimed = false)
   if (!cfg) {
     return { decide: () => 'pass', reset: () => {}, get primed() { return true } }
   }
-  const { dropKeyframesAfter, dropDeltaChance = 0, seed = 1 } = cfg
+  const { dropKeyframesAfter, dropDeltaChance = 0, seed = 1, keepEveryNthKeyframe = 0 } = cfg
   let rand = mulberry32(seed)
   let primed = alreadyPrimed
+  // Counts the keyframes eligible to be dropped, which is what keepEveryNthKeyframe is
+  // measured in. Not the output index: the GOP can change under tune() and the rhythm should
+  // stay "every Nth bloom", not "every Nth frame".
+  let eligibleKeys = 0
 
   return {
     decide(type, index) {
@@ -57,6 +61,19 @@ export function createMoshFilter(cfg: MoshConfig | false, alreadyPrimed = false)
         return 'pass'
       }
       if (type === 'key' && dropKeyframesAfter !== undefined && index > dropKeyframesAfter) {
+        /*
+         * Counted BEFORE the test, so the first eligible keyframe is dropped and the Nth is
+         * kept: the cycle reads bloom-then-snap, which is the way round datamoshing wants it.
+         * Keeping the first instead would open with a snap back to a picture that had not
+         * decayed yet, i.e. with nothing happening.
+         *
+         * This matters on AVC and HEVC specifically. There the decoder survives a dropped
+         * keyframe indefinitely, so error only ever accumulates and nothing ever brings the
+         * picture back — AV1 and VP9 get the same rhythm for free, from the decoder dying and
+         * the pipeline's recovery keyframe. n = 1 keeps every one of them, i.e. no bloom.
+         */
+        eligibleKeys++
+        if (keepEveryNthKeyframe > 0 && eligibleKeys % keepEveryNthKeyframe === 0) return 'pass'
         return 'drop'
       }
       if (type === 'delta' && dropDeltaChance > 0 && rand() < dropDeltaChance) {
@@ -67,6 +84,7 @@ export function createMoshFilter(cfg: MoshConfig | false, alreadyPrimed = false)
     reset() {
       primed = false
       rand = mulberry32(seed)
+      eligibleKeys = 0
     },
     get primed() {
       return primed
@@ -80,6 +98,7 @@ export function sameMoshConfig(a: MoshConfig | false, b: MoshConfig | false): bo
   if (!a || !b) return false
   return (
     a.dropKeyframesAfter === b.dropKeyframesAfter &&
+    a.keepEveryNthKeyframe === b.keepEveryNthKeyframe &&
     a.dropDeltaChance === b.dropDeltaChance &&
     a.seed === b.seed
   )

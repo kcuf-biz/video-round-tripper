@@ -142,7 +142,7 @@ served over plain `http://` (WebCodecs is a secure-context API — `VideoEncoder
 | `encodeScale` | 0–1. Encode below display resolution and let the canvas upscale. Cheap, very effective. |
 | `declaredFramerate` | The lie. Tell the rate controller 60 while feeding it 6 and it starves itself. |
 | `gop` | `'infinite'` never sends another keyframe, so error never gets corrected. |
-| `mosh` | Drops keyframe chunks *between* encoder and decoder, so deltas apply to a stale reference. The classic bloom. |
+| `mosh` | Drops keyframe chunks *between* encoder and decoder, so deltas apply to a stale reference. The classic bloom. `keepEveryNthKeyframe` lets one back through on a rhythm, which is the only thing that clears the bloom on AVC/HEVC — their decoders survive the drop instead of dying and triggering the pipeline's recovery keyframe. |
 | `codec` | A family (`'avc'`), a raw codec string, or `'auto'` (default) to probe. |
 | `codecPreference` | The family order `'auto'` sweeps. Defaults to `CODEC_PREFERENCE`. |
 | `captureMode` | `'continuous'` or `'on-interaction'`. |
@@ -174,7 +174,7 @@ So the defaults differ by family:
 
 | family | coarseness | gop | mosh |
 |---|---|---|---|
-| avc, hevc | 0.78 | 20 | drop every keyframe — the classic bloom, out of the box |
+| avc, hevc | 0.78 | 20 | drop every keyframe, keeping every 3rd — bloom, collapse, snap back |
 | av1, vp9 | 0.78 | `infinite` | off; moshing is opt-in because it does not produce the look |
 
 They are resolved *after* the probe, because that is the first moment the family is known. A

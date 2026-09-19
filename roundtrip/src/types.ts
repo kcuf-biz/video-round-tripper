@@ -67,6 +67,12 @@ export interface MoshConfig {
    * regardless of this value.
    */
   dropKeyframesAfter?: number
+  /**
+   * Let every Nth keyframe after `dropKeyframesAfter` through, so the bloom snaps back to
+   * clean on a rhythm; with GOP 20 at 30 captured fps, 2 means a snap every ~1.3s.
+   * undefined/0 = never (today's behaviour).
+   */
+  keepEveryNthKeyframe?: number
   /** Drop this fraction of delta chunks too (0..1). Adds tearing on top of the bloom. */
   dropDeltaChance?: number
   /** Deterministic seed for dropDeltaChance, so a look can be reproduced. */
