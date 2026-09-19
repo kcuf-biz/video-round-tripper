@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
-import type { RoundTripProps } from './types.ts'
+import type { CSSProperties, ReactNode } from 'react'
+import type { CaptureSource, CodecFamily, MoshConfig } from './types.ts'
 import {
   createRoundTrip,
   prefersReducedMotion,
@@ -7,6 +8,65 @@ import {
   type RoundTripStatus,
 } from './core/createRoundTrip.ts'
 import { ensureStyles } from './core/styles.ts'
+
+/**
+ * Props for <RoundTrip>. Lives here rather than in types.ts because it is the only public type
+ * that names React's, and types.ts has to stay importable by a consumer who has no React.
+ */
+export interface RoundTripProps {
+  children: ReactNode
+
+  /** Bypass the whole pipeline and render children plainly. Defaults to true under prefers-reduced-motion. */
+  disabled?: boolean
+
+  /** Swap the capture strategy. Defaults to the foreignObject rasterizer. */
+  source?: CaptureSource
+
+  /** 'continuous' runs a loop; 'on-interaction' only captures after scroll/pointer/resize settle. */
+  captureMode?: 'continuous' | 'on-interaction'
+  /** Target capture cadence. Actual will be lower and uneven — that is the aesthetic, not a bug. */
+  captureFps?: number
+
+  /**
+   * A codec FAMILY ('avc' | 'hevc' | 'av1' | 'vp9'), an explicit codec string, or 'auto' to
+   * probe at runtime. A family is the useful form: the concrete string carries a level, and
+   * the level has to be derived from the coded size or the encoder refuses it outright.
+   */
+  codec?: CodecFamily | (string & {}) | 'auto'
+  /** Family order to sweep when codec is 'auto'. Defaults to CODEC_PREFERENCE (avc first). */
+  codecPreference?: readonly CodecFamily[]
+  /**
+   * THE dial. 0 = nearly clean, 1 = falls apart. Mapped to a per-codec QP in ./quantizer.ts.
+   * Left undefined, it takes the picked family's default from ./codecs.ts.
+   */
+  coarseness?: number
+  /** Bypass `coarseness` with a raw per-codec quantizer value. Advanced. */
+  rawQuantizer?: number
+  /** Used only when quantizer mode is unsupported. Deliberately starved. */
+  bitrate?: number
+  /**
+   * The lie. Configure the rate controller for this framerate while feeding it far fewer
+   * frames, so it budgets tiny frames and starves itself. Independent of captureFps.
+   */
+  declaredFramerate?: number
+  /** 0..1 — encode below display resolution and let the canvas upscale. Cheap, very effective. */
+  encodeScale?: number
+
+  /**
+   * Frames between keyframes. 'infinite' = keyFrame:true on frame 0 only, never again.
+   * Left undefined, it takes the picked family's default from ./codecs.ts.
+   */
+  gop?: number | 'infinite'
+  /**
+   * Drop chunks between encoder and decoder. See MoshConfig.
+   * Left undefined, it takes the picked family's default from ./codecs.ts — which is a mosh
+   * for AVC/HEVC and none for AV1/VP9, where it does not produce the look.
+   */
+  mosh?: MoshConfig | false
+
+  className?: string
+  style?: CSSProperties
+}
 
 function usePrefersReducedMotion(): boolean {
   const [reduced, setReduced] = useState(prefersReducedMotion)

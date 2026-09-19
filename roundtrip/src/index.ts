@@ -2,7 +2,7 @@
  * Public surface. Kept deliberately small — everything else is an implementation detail and
  * is free to change.
  */
-export { RoundTrip } from './RoundTrip.tsx'
+export { RoundTrip, type RoundTripProps } from './RoundTrip.tsx'
 
 // The framework-free controller and the vanilla mount. The React component is a thin wrapper
 // over the first of these; the second is what a plain page (or the IIFE bundle) uses.
@@ -16,7 +16,6 @@ export type {
 export { mountRoundTrip, type MountOptions, type MountedRoundTrip } from './mount.ts'
 export { ensureStyles, ROUNDTRIP_CSS } from './core/styles.ts'
 export type {
-  RoundTripProps,
   CaptureSource,
   CodecChoice,
   CodecFamily,

@@ -1,0 +1,27 @@
+{
+  // Declarations only — Vite emits the JavaScript. `rewriteRelativeImportExtensions` is what
+  // makes this possible at all: the source imports carry explicit `.ts`/`.tsx` extensions (the
+  // source-only package pattern the demo depends on), and without the rewrite the emitted d.ts
+  // files would point a consumer at `./types.ts`, which does not exist in the tarball.
+  // TS >= 5.7 is required for it, and also for it to coexist with allowImportingTsExtensions
+  // while emitting. 5.9 is pinned at the root.
+  //
+  // IT ONLY REWRITES THE JAVASCRIPT. Verified against tsc 5.9.3 with a two-file repro: the
+  // emitted .js says `from "./a.js"` and the emitted .d.ts still says `from './a.ts'`. Since
+  // Vite emits the JS here, the d.ts is the one output we produce and the one place the flag
+  // does nothing — hence scripts/dts-extensions.mjs, which finishes the job. Keep the flag on
+  // anyway: it costs nothing and it is the right thing the day tsc extends it to declarations.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "declaration": true,
+    "declarationMap": true,
+    "emitDeclarationOnly": true,
+    "rewriteRelativeImportExtensions": true,
+    "rootDir": "src",
+    "outDir": "dist"
+  },
+  // Tests are source, not surface. Emitting *.test.d.ts into the tarball is just noise.
+  "include": ["src"],
+  "exclude": ["src/**/*.test.ts"]
+}

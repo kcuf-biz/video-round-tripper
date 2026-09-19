@@ -3,12 +3,17 @@
   "private": true,
   "type": "module",
   "version": "0.1.0",
-  "workspaces": ["roundtrip", "demo"],
+  "workspaces": [
+    "roundtrip",
+    "demo"
+  ],
   "scripts": {
     "dev": "npm run dev -w demo",
     "serve:tailnet": "tailscale serve --bg --https=8450 http://127.0.0.1:5394",
     "serve:tailnet:off": "tailscale serve --https=8450 off",
     "build": "npm run build -w demo",
+    "build:lib": "vite build -c roundtrip/vite.config.ts && vite build -c roundtrip/vite.iife.config.ts && tsc -p roundtrip/tsconfig.build.json && node roundtrip/scripts/dts-extensions.mjs",
+    "pack": "npm run build:lib && npm pack -w roundtrip --pack-destination roundtrip",
     "preview": "npm run preview -w demo",
     "typecheck": "tsc --noEmit -p roundtrip && tsc --noEmit -p demo",
     "test": "vitest run",

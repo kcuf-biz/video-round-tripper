@@ -3,3 +3,5 @@ dist/
 logs/
 *.local
 .DS_Store
+*.tgz
+package.json.packbak
