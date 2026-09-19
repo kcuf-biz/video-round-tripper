@@ -5,5 +5,6 @@ export {
   collectSameOriginCss,
   buildExternalCss,
   syncFormState,
+  syncScrollState,
   type ResourceCache,
 } from './inlineResources.ts'

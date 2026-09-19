@@ -1,12 +1,15 @@
-import { useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { RoundTrip } from '@video-round-tripper/roundtrip'
 import { Controls, DEFAULTS, moshFrom, type Knobs } from './Controls.tsx'
 import { Page } from './content/Page.tsx'
 import { DeviceInfo } from './DeviceInfo.tsx'
+import { Overlay } from './Overlay.tsx'
 
 export function App() {
   const [k, setK] = useState<Knobs>(DEFAULTS)
+  const [uiOpen, setUiOpen] = useState(true)
   const set = (n: Partial<Knobs>) => setK((prev) => ({ ...prev, ...n }))
+  const toggleUi = useCallback(() => setUiOpen((v) => !v), [])
 
   /*
    * Memoized because moshFrom() builds a fresh object, and an unstable `mosh` identity makes
@@ -19,8 +22,15 @@ export function App() {
   )
 
   return (
-    <div className="layout">
+    <>
+      {/*
+        Full-bleed: .stage gives the root a bounded height, which is what turns .rt-content
+        into the scroll container. The content then scrolls UNDER a canvas that stays pinned
+        to the viewport — and scrolling is the largest whole-frame motion the piece can
+        produce, so it is where the encoder falls apart hardest.
+      */}
       <RoundTrip
+        className="stage"
         disabled={k.disabled}
         coarseness={k.coarseness}
         encodeScale={k.encodeScale}
@@ -33,10 +43,11 @@ export function App() {
       >
         <Page />
       </RoundTrip>
-      <div>
+
+      <Overlay open={uiOpen} onToggle={toggleUi}>
         <Controls k={k} set={set} />
         <DeviceInfo />
-      </div>
-    </div>
+      </Overlay>
+    </>
   )
 }

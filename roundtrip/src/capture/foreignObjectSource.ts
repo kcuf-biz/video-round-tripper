@@ -1,5 +1,10 @@
 import type { CaptureSource } from '../types.ts'
-import { createResourceCache, syncFormState, type ResourceCache } from './inlineResources.ts'
+import {
+  createResourceCache,
+  syncFormState,
+  syncScrollState,
+  type ResourceCache,
+} from './inlineResources.ts'
 
 /**
  * The default capture path: serialize the live element into an SVG <foreignObject>, load it
@@ -49,6 +54,7 @@ export function createForeignObjectSource(
     const css = await cache.css()
     const clone = element.cloneNode(true) as HTMLElement
     syncFormState(element, clone)
+    syncScrollState(element, clone)
 
     const xml = new XMLSerializer().serializeToString(clone)
     const svg =

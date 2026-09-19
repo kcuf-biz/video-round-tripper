@@ -17,6 +17,18 @@
    */
   position: relative;
   z-index: 0;
+  /*
+   * THE COMPONENT OWNS THE SCROLL CONTAINER. Give .rt-root a bounded height and the content
+   * scrolls inside it while the canvas, a sibling pinned to the root, stays put — so the
+   * round-tripped image never scrolls out from under itself. With an unbounded root, height
+   * resolves to auto and this is inert, so it is safe as a default.
+   *
+   * Scrolling is also the strongest motion the piece gets: it moves the entire frame at once,
+   * which is the single best way to make an encoder fall apart.
+   */
+  height: 100%;
+  overflow: auto;
+  overscroll-behavior: contain;
 }
 
 .rt-canvas {

@@ -145,6 +145,51 @@ export function syncFormState(source: Element, clone: Element): void {
 }
 
 /**
+ * Scroll position is a PROPERTY, not an attribute, so cloneNode() drops it: a scrolled
+ * container would capture as though it were scrolled to the top. Same class of problem as
+ * form state, and it matters more here, because the component is designed to own a scroll
+ * container so the canvas can stay put while the content moves under it.
+ *
+ * The clone renders in a separate document where scrollTop means nothing, so the scrolled
+ * appearance has to be reproduced geometrically: clip the scroller and shift its children.
+ *
+ * WHY EACH CHILD RATHER THAN ONE WRAPPER: wrapping a scroller's children in a single
+ * translated div is the obvious implementation and it is wrong. If the scroller is a flex or
+ * grid container the wrapper becomes its only item and the whole layout collapses; it also
+ * breaks any `>` child selector. Transforming each child individually shifts them all by the
+ * same amount — which is exactly what scrolling looks like — while touching neither layout
+ * nor selector matching, because transforms are paint-only.
+ */
+export function syncScrollState(source: Element, clone: Element): void {
+  const src = [source, ...Array.from(source.querySelectorAll('*'))]
+  const dst = [clone, ...Array.from(clone.querySelectorAll('*'))]
+
+  for (let i = 0; i < src.length && i < dst.length; i++) {
+    const s = src[i]!
+    const top = s.scrollTop
+    const left = s.scrollLeft
+    if (top === 0 && left === 0) continue
+
+    const d = dst[i]
+    if (!(d instanceof HTMLElement)) continue
+    d.style.overflow = 'hidden'
+
+    const srcKids = Array.from(s.children)
+    const dstKids = Array.from(d.children)
+    for (let j = 0; j < srcKids.length && j < dstKids.length; j++) {
+      const dk = dstKids[j]
+      if (!(dk instanceof HTMLElement)) continue
+      // Preserve whatever transform the child already had; the scroll offset composes as the
+      // OUTERMOST operation (rightmost applies first), so the element is shifted after its
+      // own transform rather than instead of it.
+      const existing = getComputedStyle(srcKids[j]!).transform
+      const own = existing && existing !== 'none' ? ' ' + existing : ''
+      dk.style.transform = `translate(${-left}px, ${-top}px)${own}`
+    }
+  }
+}
+
+/**
  * NOT HANDLED YET — the remaining drop-anywhere work, deferred deliberately:
  *  - cross-origin <img>: taints the canvas, which kills new VideoFrame(). Needs fetch+data-URI
  *    per image, and a visible degradation path for images that refuse CORS.
@@ -152,4 +197,6 @@ export function syncFormState(source: Element, clone: Element): void {
  *  - shadow DOM: not traversed by XMLSerializer; needs manual flattening.
  *  - <iframe>: renders blank inside foreignObject. Probably unfixable; document it.
  *  - CSS background-image url(): same cross-origin problem as <img>.
+ *  - position:sticky inside a scroller: shifted with everything else, so it will not
+ *    stick in the capture. Needs per-element handling if it ever matters.
  */

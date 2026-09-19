@@ -198,9 +198,13 @@ export function RoundTrip(props: RoundTripProps) {
       const WAKE_EVENTS = ['pointermove', 'pointerdown', 'wheel', 'keydown', 'focusin', 'input'] as const
       if (captureMode === 'on-interaction') {
         for (const ev of WAKE_EVENTS) content.addEventListener(ev, wake, { passive: true })
+        // capture:true because scroll does not bubble — without it, scrolling the content
+        // container itself (the normal case now) would never wake the loop.
+        content.addEventListener('scroll', wake, { passive: true, capture: true })
         window.addEventListener('scroll', wake, { passive: true })
         detachWake = () => {
           for (const ev of WAKE_EVENTS) content.removeEventListener(ev, wake)
+          content.removeEventListener('scroll', wake, { capture: true })
           window.removeEventListener('scroll', wake)
         }
       }

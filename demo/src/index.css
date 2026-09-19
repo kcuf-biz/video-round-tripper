@@ -19,23 +19,61 @@ body {
   font: 13px/1.5 var(--mono);
 }
 
-.layout {
-  display: grid;
-  grid-template-columns: 1fr 300px;
-  gap: 20px;
-  padding: 20px;
-  align-items: start;
+/* Full-bleed stage. The bounded height is what makes .rt-content the scroll container. */
+.stage {
+  height: 100vh;
+  height: 100dvh; /* mobile: avoid the collapsing-toolbar jump */
 }
-@media (max-width: 900px) {
-  .layout { grid-template-columns: 1fr; }
+
+/* --- control overlay ------------------------------------------------------
+   Sits OUTSIDE .rt-content on purpose: anything inside that subtree is captured
+   and round-tripped, which would encode the controls into the very artifacts
+   they exist to adjust. */
+.ui-toggle {
+  position: fixed;
+  top: 12px;
+  right: 12px;
+  z-index: 60;
+  font: 11px var(--mono);
+  padding: 7px 10px;
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--border);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.ui-toggle:hover { border-color: var(--accent); color: var(--accent); }
+.ui-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.ui-toggle kbd {
+  font: 10px var(--mono);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 0 4px;
+  color: var(--muted);
+}
+
+.ui-panel {
+  position: fixed;
+  top: 48px;
+  right: 12px;
+  bottom: 12px;
+  width: 300px;
+  z-index: 55;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+@media (max-width: 700px) {
+  /* Below this the panel would leave too little stage to judge the effect; it is
+     toggleable, so covering the view while open is the better trade. */
+  .ui-panel { left: 12px; width: auto; }
 }
 
 .panel {
   background: var(--panel);
   border: 1px solid var(--border);
   padding: 14px;
-  position: sticky;
-  top: 20px;
 }
 .panel h2 {
   font: 600 11px/1 var(--mono);
