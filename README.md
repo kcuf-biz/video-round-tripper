@@ -147,6 +147,7 @@ served over plain `http://` (WebCodecs is a secure-context API — `VideoEncoder
 | `codecPreference` | The family order `'auto'` sweeps. Defaults to `CODEC_PREFERENCE`. |
 | `captureMode` | `'continuous'` or `'on-interaction'`. |
 | `disabled` | Bypass. Defaults to on under `prefers-reduced-motion`. |
+| `onCodec` | Called once per pipeline build with the codec the probe picked and the dials resolved against it — the only way to read the values a left-undefined dial landed on. |
 
 `coarseness`, `gop` and `mosh` are the three with per-codec defaults. Leaving one `undefined`
 is how you ask for the default; `0`, `false` and `'infinite'` are explicit answers and win.

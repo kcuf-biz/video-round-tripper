@@ -1,4 +1,14 @@
-import type { MoshConfig } from '@video-round-tripper/roundtrip'
+import type { CodecChoice, CodecDials, MoshConfig } from '@video-round-tripper/roundtrip'
+
+/**
+ * What the stage reported through `onCodec`: the codec its probe picked and the dials it
+ * resolved against that family. Not an estimate — it is read back out of the running
+ * pipeline, so it is the only trustworthy answer while the panel is on auto.
+ */
+export interface PickedCodec {
+  choice: CodecChoice
+  dials: CodecDials
+}
 
 export interface Knobs {
   disabled: boolean
@@ -60,6 +70,36 @@ export function moshFrom(k: Knobs): MoshConfig | false {
   }
 }
 
+/**
+ * The inverse of moshFrom, plus the other two dials: the knob positions that mean the same
+ * thing as a set of resolved dials.
+ *
+ * Leaving auto has to CONTINUE from whatever auto resolved to. It used to fall back to this
+ * panel's own DEFAULTS, so unchecking "never send another keyframe" on the AVC auto state
+ * (coarseness 0.78 / GOP 20 / drop every keyframe) silently switched moshing OFF — and "GOP
+ * 20" then looked identical to "no keyframes", because neither of them was moshing.
+ */
+export function knobsFromDials(prev: Knobs, d: CodecDials): Knobs {
+  return {
+    ...prev,
+    coarseness: d.coarseness,
+    gopInfinite: d.gop === 'infinite',
+    // 'infinite' has no number to show, so the slider keeps whatever it was last set to.
+    gop: typeof d.gop === 'number' ? d.gop : prev.gop,
+    mosh: !!d.mosh,
+    dropKeyframesAfter: d.mosh ? (d.mosh.dropKeyframesAfter ?? 0) : 0,
+    dropDeltaChance: d.mosh ? (d.mosh.dropDeltaChance ?? 0) : 0,
+  }
+}
+
+/** Shared with DeviceInfo so the panel and the readout describe a mosh the same way. */
+export function describeMosh(mosh: CodecDials['mosh']): string {
+  if (!mosh) return 'off'
+  const parts = [`drop keys after ${mosh.dropKeyframesAfter ?? 0}`]
+  if (mosh.dropDeltaChance) parts.push(`${Math.round(mosh.dropDeltaChance * 100)}% deltas`)
+  return parts.join(' · ')
+}
+
 
 /**
  * Measured starting points. Dropping a keyframe is what produces the bloom, so the GOP sets
@@ -90,7 +130,15 @@ export const PRESETS: { name: string; hint: string; knobs: Partial<Knobs> }[] = 
   },
 ]
 
-export function Controls({ k, set }: { k: Knobs; set: (n: Partial<Knobs>) => void }) {
+export function Controls({
+  k,
+  set,
+  picked,
+}: {
+  k: Knobs
+  set: (n: Partial<Knobs>) => void
+  picked: PickedCodec | null
+}) {
   return (
     <aside className="panel">
       <h2>Presets</h2>
@@ -126,7 +174,14 @@ export function Controls({ k, set }: { k: Knobs; set: (n: Partial<Knobs>) => voi
 
       <div className="row">
         <label>
-          coarseness <b>{k.auto ? 'auto' : k.coarseness.toFixed(2)}</b>
+          coarseness{' '}
+          <b>
+            {k.auto
+              ? picked
+                ? `auto ${picked.dials.coarseness}`
+                : 'auto'
+              : k.coarseness.toFixed(2)}
+          </b>
         </label>
         <input
           type="range" min={0} max={1} step={0.01} value={k.coarseness}
@@ -191,7 +246,15 @@ export function Controls({ k, set }: { k: Knobs; set: (n: Partial<Knobs>) => voi
         </select>
       </div>
 
-      <h2 style={{ marginTop: 18 }}>Keyframes {k.auto && <span className="auto-tag">auto</span>}</h2>
+      {/*
+        The auto tag carries the resolved value once the stage has reported one, because
+        otherwise these two sections show nothing at all on auto: the checkbox and slider
+        below are hidden or stale, and "auto" alone does not say auto WHAT.
+      */}
+      <h2 style={{ marginTop: 18 }}>
+        Keyframes{' '}
+        {k.auto && <span className="auto-tag">auto{picked ? ` · GOP ${picked.dials.gop}` : ''}</span>}
+      </h2>
       <div className="row">
         <label className="check">
           <input type="checkbox" checked={k.gopInfinite} onChange={(e) => set({ gopInfinite: e.target.checked })} />
@@ -210,7 +273,12 @@ export function Controls({ k, set }: { k: Knobs; set: (n: Partial<Knobs>) => voi
         </div>
       )}
 
-      <h2 style={{ marginTop: 18 }}>Mosh {k.auto && <span className="auto-tag">auto</span>}</h2>
+      <h2 style={{ marginTop: 18 }}>
+        Mosh{' '}
+        {k.auto && (
+          <span className="auto-tag">auto{picked ? ` · ${describeMosh(picked.dials.mosh)}` : ''}</span>
+        )}
+      </h2>
       <div className="row">
         <label className="check">
           <input type="checkbox" checked={k.mosh} onChange={(e) => set({ mosh: e.target.checked })} />

@@ -1,9 +1,9 @@
-import type { CaptureReport, CaptureSource, CodecFamily, MoshConfig } from '../types.ts'
+import type { CaptureReport, CaptureSource, CodecChoice, CodecFamily, MoshConfig } from '../types.ts'
 import { createForeignObjectSource } from '../capture/foreignObjectSource.ts'
 import { probeCodec } from '../codec/probe.ts'
 import { createPipeline, type Pipeline } from '../codec/pipeline.ts'
 import { createPacer, encodeSize, isAwake, WAKE_MS } from '../frameBudget.ts'
-import { resolveDials } from '../codecs.ts'
+import { resolveDials, type CodecDials } from '../codecs.ts'
 import { ensureStyles } from './styles.ts'
 
 /**
@@ -54,6 +54,16 @@ export interface RoundTripCoreOptions extends RoundTripDials {
   encodeScale?: number
   /** Status transitions, for whatever is drawing the host element's [data-status]. */
   onStatus?: (status: RoundTripStatus, message: string) => void
+  /**
+   * What the probe picked and what the dials resolved to against it, once per pipeline build.
+   *
+   * This is the only way out for either answer. Both are decided after construction — the
+   * probe is async and the per-codec table cannot be consulted until it answers — so a caller
+   * that wants to SHOW the dials the encoder is really using (which is exactly the state a
+   * bare <RoundTrip> is in) has no way to compute them. Re-probing on the side is an estimate,
+   * not a reading: it does not know the stage's coded size.
+   */
+  onCodec?: (choice: CodecChoice, resolved: CodecDials) => void
 }
 
 export interface RoundTripController {
@@ -104,6 +114,7 @@ export function createRoundTrip(opts: RoundTripCoreOptions): RoundTripController
     declaredFramerate = 60,
     encodeScale = 1,
     onStatus,
+    onCodec,
   } = opts
 
   ensureStyles(content.ownerDocument)
@@ -178,6 +189,10 @@ export function createRoundTrip(opts: RoundTripCoreOptions): RoundTripController
        */
       family = choice.family
       const resolved = resolveDials(family, dials)
+      // Reported here, next to the resolution itself, so what the caller is told and what the
+      // pipeline is built with can never drift apart. Once per build, like onStatus's
+      // 'running', and guarded the same way.
+      if (!disposed) onCodec?.(choice, resolved)
 
       pipeline = createPipeline({
         ...choice,

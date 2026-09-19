@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { encodeSize, probeCodec, resolveDials, type CodecDials } from '@video-round-tripper/roundtrip'
+import { describeMosh, type PickedCodec } from './Controls.tsx'
 
 /**
  * What this device can actually do. Worth showing because the demo is usually opened over the
@@ -8,7 +9,7 @@ import { encodeSize, probeCodec, resolveDials, type CodecDials } from '@video-ro
  * whether the origin is a secure context (WebCodecs is gated on it) and which codec the
  * device actually admits to supporting.
  *
- * It also resolves the dials, because with the panel on "auto" the values the encoder is
+ * It also shows the dials, because with the panel on "auto" the values the encoder is
  * actually using appear NOWHERE ELSE: they come from the codec family the probe picked, which
  * is the one thing the controls cannot know.
  */
@@ -16,10 +17,13 @@ export function DeviceInfo({
   codec,
   encodeScale,
   requested,
+  picked,
 }: {
   codec: string
   encodeScale: number
   requested: Partial<CodecDials>
+  /** What the stage reported through onCodec. Null only until the first pipeline builds. */
+  picked: PickedCodec | null
 }) {
   const [info, setInfo] = useState<string[]>(['probing…'])
   const { coarseness, gop, mosh } = requested
@@ -31,22 +35,36 @@ export function DeviceInfo({
       lines.push(`secure context: ${window.isSecureContext ? 'yes' : 'NO — WebCodecs is gated on this'}`)
       const have = typeof VideoEncoder !== 'undefined'
       lines.push(`VideoEncoder: ${have ? 'present' : 'MISSING'}`)
-      if (have) {
+      // Marks the values nobody asked for, which are exactly the ones the family table filled
+      // in. Same test the package makes: undefined is the only thing that falls back.
+      const from = (v: unknown) => (v === undefined ? ' (family default)' : '')
+
+      if (picked) {
         /*
-         * Probed at the REAL coded size, not at a nominal 640x480: the codec string's level is
-         * derived from the coded area and Chrome's encoder enforces it for AVC, so a probe at
-         * a small size happily reports a codec the actual stage would be refused.
+         * THE STAGE'S OWN ANSWER, not an estimate. <RoundTrip> reports the codec its probe
+         * chose and the dials it resolved (onCodec), from inside the running pipeline — at the
+         * stage's real coded size, for the dials really in force. Nothing here can disagree
+         * with what is being encoded, which is what the fallback below could only approximate.
+         */
+        lines.push(`picked: ${picked.choice.family} — ${picked.choice.codec}`)
+        lines.push(`  ${picked.choice.hardwareAcceleration} · ${picked.choice.bitrateMode}`)
+        lines.push(`dials:  coarseness ${picked.dials.coarseness}${from(coarseness)}`)
+        lines.push(`        gop ${picked.dials.gop}${from(gop)}`)
+        lines.push(`        mosh ${describeMosh(picked.dials.mosh)}${from(mosh)}`)
+      } else if (have) {
+        /*
+         * FALLBACK ONLY, for the moment before the stage has reported — and for the case
+         * where it never will, because round-tripping is switched off and there is no
+         * pipeline to report. It is an ESTIMATE: this probes the VIEWPORT, while the stage is
+         * the viewport minus whatever chrome the page has, so a borderline level could in
+         * principle resolve differently here than there.
          *
-         * Through encodeSize(), though, not the raw viewport. Chrome's AVC encoder REFUSES AN
-         * ODD DIMENSION outright while HEVC accepts it — measured here at 606x713: both avc1
-         * strings false, hev1 true; at 606x714 all three true. The pipeline always encodes an
-         * even size, so probing the raw viewport reports a codec the pipeline would never
-         * have picked.
-         *
-         * This is still an ESTIMATE of what the stage picked, not a reading of it: the stage
-         * is the viewport minus whatever chrome the page has, so a borderline level could in
-         * principle resolve differently. It tracks the codec select and encodeScale so the two
-         * agree about the family in every case that is not borderline.
+         * Even as an estimate it probes at the REAL coded size, not a nominal 640x480: the
+         * codec string's level is derived from the coded area and Chrome's encoder enforces it
+         * for AVC, so a probe at a small size happily reports a codec the stage would be
+         * refused. Through encodeSize(), too — Chrome's AVC encoder REFUSES AN ODD DIMENSION
+         * outright while HEVC accepts it (measured at 606x713: both avc1 strings false, hev1
+         * true; at 606x714 all three true), and the pipeline always encodes an even size.
          */
         const enc = encodeSize(window.innerWidth, window.innerHeight, encodeScale)
         const choice = await probeCodec({
@@ -55,12 +73,9 @@ export function DeviceInfo({
           codec: codec === 'auto' ? undefined : codec,
         })
         if (choice) {
-          lines.push(`picked: ${choice.family} — ${choice.codec}`)
+          lines.push(`picked: ${choice.family} — ${choice.codec} (estimate)`)
           lines.push(`  ${choice.hardwareAcceleration} · ${choice.bitrateMode}`)
-          // The whole point of the table: whatever the caller left undefined is filled in from
-          // the family, and only here is the result visible.
           const d = resolveDials(choice.family, { coarseness, gop, mosh })
-          const from = (v: unknown) => (v === undefined ? ' (family default)' : '')
           lines.push(`dials:  coarseness ${d.coarseness}${from(coarseness)}`)
           lines.push(`        gop ${d.gop}${from(gop)}`)
           lines.push(`        mosh ${describeMosh(d.mosh)}${from(mosh)}`)
@@ -74,7 +89,7 @@ export function DeviceInfo({
     return () => {
       alive = false
     }
-  }, [codec, encodeScale, coarseness, gop, mosh])
+  }, [codec, encodeScale, coarseness, gop, mosh, picked])
 
   return (
     <aside className="panel" style={{ marginTop: 14 }}>
@@ -82,11 +97,4 @@ export function DeviceInfo({
       <pre className="device">{info.join('\n')}</pre>
     </aside>
   )
-}
-
-function describeMosh(mosh: CodecDials['mosh']): string {
-  if (!mosh) return 'off'
-  const parts = [`drop keys after ${mosh.dropKeyframesAfter ?? 0}`]
-  if (mosh.dropDeltaChance) parts.push(`${Math.round(mosh.dropDeltaChance * 100)}% deltas`)
-  return parts.join(' · ')
 }

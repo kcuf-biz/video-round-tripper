@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
-import type { CaptureSource, CodecFamily, MoshConfig } from './types.ts'
+import type { CaptureSource, CodecChoice, CodecFamily, MoshConfig } from './types.ts'
+import type { CodecDials } from './codecs.ts'
 import {
   createRoundTrip,
   prefersReducedMotion,
@@ -64,6 +65,14 @@ export interface RoundTripProps {
    */
   mosh?: MoshConfig | false
 
+  /**
+   * Called once per pipeline build with the codec the probe picked and the dials resolved
+   * against it — i.e. the values actually being encoded with, including every one you left
+   * undefined. A panel that wants to display them, or to take over from them, has no other
+   * source: the family is not known until the async probe answers.
+   */
+  onCodec?: (choice: CodecChoice, resolved: CodecDials) => void
+
   className?: string
   style?: CSSProperties
 }
@@ -117,6 +126,7 @@ export function RoundTrip(props: RoundTripProps) {
     encodeScale = 1,
     gop,
     mosh,
+    onCodec,
     className,
     style,
   } = props
@@ -129,6 +139,18 @@ export function RoundTrip(props: RoundTripProps) {
   const controllerRef = useRef<RoundTripController | null>(null)
   const [status, setStatus] = useState<RoundTripStatus>('idle')
   const [message, setMessage] = useState<string>('')
+
+  /*
+   * Through a ref, never the dependency array below. A caller writes this as an inline arrow,
+   * so its identity is fresh on every render; listing it would rebuild the pipeline — and
+   * force the keyframe a rebuild forces — every time the parent re-rendered, which is every
+   * time the panel it feeds updated. Same rule as the live dials: only configure()-time
+   * options are dependencies.
+   */
+  const onCodecRef = useRef(onCodec)
+  useEffect(() => {
+    onCodecRef.current = onCodec
+  })
 
   /*
    * A LAYOUT effect, not a passive one. The stylesheet used to be a `.css` import and was
@@ -162,6 +184,7 @@ export function RoundTrip(props: RoundTripProps) {
         setStatus(s)
         setMessage(m)
       },
+      onCodec: (choice, resolved) => onCodecRef.current?.(choice, resolved),
     })
     controllerRef.current = controller
     return () => {

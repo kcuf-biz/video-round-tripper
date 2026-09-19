@@ -103,6 +103,9 @@ export function mountRoundTrip(target: HTMLElement, opts: MountOptions = {}): Mo
       ...opts,
       content,
       canvas,
+      // The spread carries every core option straight through, onCodec included. onStatus is
+      // the one exception: the root's [data-status] and the status line have to track it too,
+      // so it is wrapped rather than forwarded.
       onStatus: (s, message) => {
         root.dataset.status = s
         status.textContent = s === 'running' ? '' : message

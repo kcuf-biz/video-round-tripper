@@ -1,6 +1,14 @@
 import { useCallback, useMemo, useState } from 'react'
-import { RoundTrip } from '@video-round-tripper/roundtrip'
-import { Controls, DEFAULTS, moshFrom, touchesDials, type Knobs } from './Controls.tsx'
+import { RoundTrip, type CodecChoice, type CodecDials } from '@video-round-tripper/roundtrip'
+import {
+  Controls,
+  DEFAULTS,
+  knobsFromDials,
+  moshFrom,
+  touchesDials,
+  type Knobs,
+  type PickedCodec,
+} from './Controls.tsx'
 import { Page } from './content/Page.tsx'
 import { DeviceInfo } from './DeviceInfo.tsx'
 import { Overlay } from './Overlay.tsx'
@@ -8,12 +16,35 @@ import { Overlay } from './Overlay.tsx'
 export function App() {
   const [k, setK] = useState<Knobs>(DEFAULTS)
   const [uiOpen, setUiOpen] = useState(true)
+
+  /*
+   * What the stage resolved, straight from the pipeline. Stable identity for the callback so
+   * it never enters <RoundTrip>'s rebuild path; the component holds it in a ref anyway, but
+   * there is no reason to hand it churn.
+   */
+  const [reported, setReported] = useState<PickedCodec | null>(null)
+  const onCodec = useCallback(
+    (choice: CodecChoice, dials: CodecDials) => setReported({ choice, dials }),
+    [],
+  )
+  // Nothing is running while round-tripping is off, so the last report is stale — say so by
+  // not having one, which puts the panels back on their own probe.
+  const picked = k.disabled ? null : reported
+
   /*
    * Touching a per-codec dial takes the panel off auto. The spread order matters: an explicit
    * `auto` in the patch (the checkbox, turning it back on) still wins over the clear.
+   *
+   * Leaving auto SEEDS from what auto actually resolved to, before the patch lands on top.
+   * Otherwise the knobs snap to this panel's own DEFAULTS, and the first touch silently
+   * changes three dials nobody aimed at — unchecking "never send another keyframe" on AVC
+   * turned moshing off, which made the GOP it was about look like it did nothing.
    */
   const set = (n: Partial<Knobs>) =>
-    setK((prev) => ({ ...prev, ...(touchesDials(n) ? { auto: false } : null), ...n }))
+    setK((prev) => {
+      const base = touchesDials(n) && prev.auto && picked ? knobsFromDials(prev, picked.dials) : prev
+      return { ...base, ...(touchesDials(n) ? { auto: false } : null), ...n }
+    })
   const toggleUi = useCallback(() => setUiOpen((v) => !v), [])
 
   /*
@@ -60,13 +91,19 @@ export function App() {
         codec={k.codec}
         gop={requested.gop}
         mosh={requested.mosh}
+        onCodec={onCodec}
       >
         <Page />
       </RoundTrip>
 
       <Overlay open={uiOpen} onToggle={toggleUi}>
-        <Controls k={k} set={set} />
-        <DeviceInfo codec={k.codec} encodeScale={k.encodeScale} requested={requested} />
+        <Controls k={k} set={set} picked={picked} />
+        <DeviceInfo
+          codec={k.codec}
+          encodeScale={k.encodeScale}
+          requested={requested}
+          picked={picked}
+        />
       </Overlay>
     </>
   )
