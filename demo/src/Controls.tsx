@@ -143,12 +143,17 @@ export function Controls({ k, set }: { k: Knobs; set: (n: Partial<Knobs>) => voi
 
       <div className="row">
         <label>codec</label>
+        {/*
+          FAMILIES, not codec strings. The concrete string carries a level and the level has to
+          be derived from the coded size — picking "avc1.42001f" by hand is how AVC silently
+          vanished from the probe on anything bigger than 921,600px.
+        */}
         <select value={k.codec} onChange={(e) => set({ codec: e.target.value })}>
-          <option value="auto">auto (probe)</option>
-          <option value="av01.0.04M.08">AV1</option>
-          <option value="vp09.00.10.08">VP9</option>
-          <option value="avc1.42001f">H.264</option>
-          <option value="hev1.1.6.L93.B0">HEVC</option>
+          <option value="auto">auto (probe: AVC first)</option>
+          <option value="avc">H.264 / AVC</option>
+          <option value="hevc">HEVC</option>
+          <option value="av1">AV1</option>
+          <option value="vp9">VP9</option>
         </select>
       </div>
 

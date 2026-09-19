@@ -1,8 +1,9 @@
-import type { CaptureSource, MoshConfig } from '../types.ts'
+import type { CaptureSource, CodecFamily, MoshConfig } from '../types.ts'
 import { createForeignObjectSource } from '../capture/foreignObjectSource.ts'
 import { probeCodec } from '../codec/probe.ts'
 import { createPipeline, type Pipeline } from '../codec/pipeline.ts'
 import { createPacer, encodeSize, isAwake, WAKE_MS } from '../frameBudget.ts'
+import { resolveDials } from '../codecs.ts'
 import { ensureStyles } from './styles.ts'
 
 /**
@@ -46,6 +47,8 @@ export interface RoundTripCoreOptions extends RoundTripDials {
   captureMode?: 'continuous' | 'on-interaction'
   /** A codec family ('avc'), a raw codec string, or 'auto' to probe. */
   codec?: string | 'auto'
+  /** Family order to sweep when codec is 'auto'. Defaults to CODEC_PREFERENCE. */
+  codecPreference?: readonly CodecFamily[]
   bitrate?: number
   declaredFramerate?: number
   encodeScale?: number
@@ -95,6 +98,7 @@ export function createRoundTrip(opts: RoundTripCoreOptions): RoundTripController
     source: externalSource,
     captureMode = 'continuous',
     codec = 'auto',
+    codecPreference,
     bitrate,
     declaredFramerate = 60,
     encodeScale = 1,
@@ -113,6 +117,12 @@ export function createRoundTrip(opts: RoundTripCoreOptions): RoundTripController
     mosh: opts.mosh,
     captureFps: opts.captureFps,
   }
+
+  /*
+   * The family the probe picked, remembered so tune() can resolve the dials against the same
+   * defaults the pipeline was built with. Null until the probe answers.
+   */
+  let family: CodecFamily | null = null
 
   let disposed = false
   let size: { w: number; h: number } | null = null
@@ -150,6 +160,7 @@ export function createRoundTrip(opts: RoundTripCoreOptions): RoundTripController
         height: enc.height,
         framerate: declaredFramerate,
         codec: codec === 'auto' ? undefined : codec,
+        codecPreference,
         bitrate,
       })
       if (cancelled) return
@@ -158,16 +169,25 @@ export function createRoundTrip(opts: RoundTripCoreOptions): RoundTripController
         return
       }
 
+      /*
+       * Per-codec defaults are resolved HERE, and not a moment earlier: the family is not
+       * known until the probe answers, and the whole point of the table is that a bare
+       * <RoundTrip> should land somewhere worth looking at on whatever codec this device
+       * turned out to admit to. Anything the caller stated explicitly wins.
+       */
+      family = choice.family
+      const resolved = resolveDials(family, dials)
+
       pipeline = createPipeline({
         ...choice,
         width: enc.width,
         height: enc.height,
         declaredFramerate,
-        coarseness: dials.coarseness ?? 0.75,
+        coarseness: resolved.coarseness,
         rawQuantizer: dials.rawQuantizer,
         bitrate,
-        gop: dials.gop ?? 'infinite',
-        mosh: dials.mosh ?? false,
+        gop: resolved.gop,
+        mosh: resolved.mosh,
         onPicture: (frame) => {
           try {
             if (!cancelled) ctx?.drawImage(frame, 0, 0, canvas.width, canvas.height)
@@ -239,6 +259,7 @@ export function createRoundTrip(opts: RoundTripCoreOptions): RoundTripController
       if (!externalSource) source?.dispose()
       pipeline = null
       source = null
+      family = null
     }
   }
 
@@ -275,11 +296,13 @@ export function createRoundTrip(opts: RoundTripCoreOptions): RoundTripController
       for (const key of ['coarseness', 'rawQuantizer', 'gop', 'mosh', 'captureFps'] as const) {
         if (key in next) (dials as Record<string, unknown>)[key] = next[key]
       }
-      pipeline?.tune({
-        coarseness: dials.coarseness,
+      if (!pipeline || !family) return
+      const resolved = resolveDials(family, dials)
+      pipeline.tune({
+        coarseness: resolved.coarseness,
         rawQuantizer: dials.rawQuantizer,
-        gop: dials.gop,
-        mosh: dials.mosh,
+        gop: resolved.gop,
+        mosh: resolved.mosh,
       })
     },
     report() {

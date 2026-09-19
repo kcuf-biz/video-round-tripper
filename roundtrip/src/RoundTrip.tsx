@@ -49,13 +49,14 @@ export function RoundTrip(props: RoundTripProps) {
     captureMode = 'continuous',
     captureFps = 30,
     codec = 'auto',
-    coarseness = 0.75,
+    codecPreference,
+    coarseness,
     rawQuantizer,
     bitrate,
     declaredFramerate = 60,
     encodeScale = 1,
-    gop = 'infinite',
-    mosh = false,
+    gop,
+    mosh,
     className,
     style,
   } = props
@@ -87,6 +88,7 @@ export function RoundTrip(props: RoundTripProps) {
       source,
       captureMode,
       codec,
+      codecPreference,
       bitrate,
       declaredFramerate,
       encodeScale,
@@ -115,7 +117,7 @@ export function RoundTrip(props: RoundTripProps) {
      * of. captureMode changes the event wiring, so it does rebuild, which is correct.
      */
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [off, source, captureMode, codec, bitrate, declaredFramerate, encodeScale])
+  }, [off, source, captureMode, codec, codecPreference, bitrate, declaredFramerate, encodeScale])
 
   useEffect(() => {
     controllerRef.current?.tune({ coarseness, rawQuantizer, gop, mosh, captureFps })

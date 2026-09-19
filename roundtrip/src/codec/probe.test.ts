@@ -13,16 +13,45 @@ const spikeMachine: ConfigSupportFn = async (cfg) => {
   return { supported: false }
 }
 
+/** The same machine with its hardware AVC/HEVC encoders taken away. */
+const softwareOnly: ConfigSupportFn = async (cfg) => {
+  if (cfg.codec.startsWith('avc1') || cfg.codec.startsWith('hev1')) return { supported: false }
+  return { supported: cfg.hardwareAcceleration !== 'prefer-hardware' }
+}
+
 describe('probeCodec', () => {
-  it('does NOT pin prefer-hardware, which would silently lose VP9 and AV1', () => {
+  it('leads with AVC, the only family that moshes into the classic look', () => {
+    return probeCodec({ ...base, isConfigSupported: spikeMachine }).then((choice) => {
+      expect(choice!.family).toBe('avc')
+      expect(choice!.codec).toBe('avc1.64001f') // High 3.1: 864x544 is inside the cap
+    })
+  })
+
+  it('does NOT pin prefer-hardware, which would silently lose VP9 and AV1', async () => {
     // This is the whole point of the module. On the spike machine, pinning
     // hardwareAcceleration:'prefer-hardware' (as the issue suggested) makes
-    // isConfigSupported return false for av01 and vp09 with no indication why.
-    return probeCodec({ ...base, isConfigSupported: spikeMachine }).then((choice) => {
-      expect(choice).not.toBeNull()
-      expect(choice!.codec).toBe('av01.0.04M.08')
-      expect(choice!.hardwareAcceleration).not.toBe('prefer-hardware')
+    // isConfigSupported return false for av01 and vp09 with no indication why — so with AVC
+    // and HEVC gone, a probe that pinned it would find nothing at all.
+    const choice = await probeCodec({ ...base, isConfigSupported: softwareOnly })
+    expect(choice!.codec).toBe('av01.0.04M.08')
+    expect(choice!.hardwareAcceleration).not.toBe('prefer-hardware')
+  })
+
+  it('derives the AVC level from the coded size instead of always offering 3.1', async () => {
+    // 1440x900 is 1,296,000px, past Baseline 3.1's 921,600 cap. Chrome's encoder refuses
+    // avc1.42001f outright there (measured), which is why AVC never used to win on a laptop.
+    const seen: string[] = []
+    const choice = await probeCodec({
+      width: 1440,
+      height: 900,
+      framerate: 60,
+      isConfigSupported: async (cfg) => {
+        seen.push(cfg.codec)
+        return { supported: cfg.codec !== 'avc1.42001f' && cfg.codec.startsWith('avc1') }
+      },
     })
+    expect(seen).not.toContain('avc1.42001f')
+    expect(choice!.codec).toBe('avc1.640028')
   })
 
   it('prefers quantizer mode, because it is the primary artifact dial', async () => {
@@ -32,7 +61,7 @@ describe('probeCodec', () => {
 
   it('falls back to a starved constant bitrate when quantizer mode is unavailable', async () => {
     const noQuantizer: ConfigSupportFn = async (cfg) => ({
-      supported: cfg.bitrateMode !== 'quantizer' && cfg.codec.startsWith('avc1'),
+      supported: cfg.bitrateMode !== 'quantizer' && cfg.codec === 'avc1.42001f',
     })
     const choice = await probeCodec({ ...base, isConfigSupported: noQuantizer })
     expect(choice).toEqual(
@@ -40,13 +69,32 @@ describe('probeCodec', () => {
     )
   })
 
-  it('honours an explicit codec request instead of sweeping', async () => {
+  it('expands a family name in the codec option', async () => {
+    const choice = await probeCodec({ ...base, codec: 'av1', isConfigSupported: spikeMachine })
+    expect(choice!.codec).toBe('av01.0.04M.08')
+  })
+
+  it('honours a raw codec string verbatim instead of sweeping', async () => {
+    const seen: string[] = []
     const choice = await probeCodec({
       ...base,
       codec: 'avc1.42001f',
-      isConfigSupported: spikeMachine,
+      isConfigSupported: async (cfg) => {
+        seen.push(cfg.codec)
+        return spikeMachine(cfg)
+      },
     })
     expect(choice!.codec).toBe('avc1.42001f')
+    expect(new Set(seen)).toEqual(new Set(['avc1.42001f']))
+  })
+
+  it('sweeps families in the order given, not the default one', async () => {
+    const choice = await probeCodec({
+      ...base,
+      codecPreference: ['vp9', 'avc'],
+      isConfigSupported: spikeMachine,
+    })
+    expect(choice!.family).toBe('vp9')
   })
 
   it('returns null rather than throwing when nothing is supported', async () => {
@@ -58,8 +106,8 @@ describe('probeCodec', () => {
     const choice = await probeCodec({
       ...base,
       isConfigSupported: async (cfg) => {
-        if (cfg.codec.startsWith('av01')) throw new TypeError('bad codec string')
-        return { supported: cfg.codec.startsWith('vp09') }
+        if (!cfg.codec.startsWith('vp09')) throw new TypeError('bad codec string')
+        return { supported: true }
       },
     })
     expect(choice!.codec).toBe('vp09.00.10.08')

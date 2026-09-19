@@ -26,6 +26,17 @@ export { createResourceCache, type ResourceCache } from '../capture/inlineResour
 // Probe the device yourself (e.g. to show the user what it picked).
 export { probeCodec, CODEC_PREFERENCE } from '../codec/probe.ts'
 
+// Codec families: the strings each expands to (level derived from coded size) and the
+// starting dials each one gets when the caller does not say. CODEC_PREFERENCE, above, is the
+// family order and lives here too.
+export {
+  CODEC_DEFAULTS,
+  codecStringsFor,
+  isCodecFamily,
+  resolveDials,
+  type CodecDials,
+} from '../codecs.ts'
+
 // The pure bits, exported because they are useful to test against and to reason about.
 export { quantizerFor, encodeOptionsFor, familyOf } from '../quantizer.ts'
 export { createMoshFilter, type MoshFilter } from '../mosh.ts'

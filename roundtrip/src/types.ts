@@ -54,10 +54,17 @@ export interface RoundTripProps {
   /** Target capture cadence. Actual will be lower and uneven — that is the aesthetic, not a bug. */
   captureFps?: number
 
-  /** Explicit codec string, or 'auto' to probe at runtime. */
-  codec?: string | 'auto'
+  /**
+   * A codec FAMILY ('avc' | 'hevc' | 'av1' | 'vp9'), an explicit codec string, or 'auto' to
+   * probe at runtime. A family is the useful form: the concrete string carries a level, and
+   * the level has to be derived from the coded size or the encoder refuses it outright.
+   */
+  codec?: CodecFamily | (string & {}) | 'auto'
+  /** Family order to sweep when codec is 'auto'. Defaults to CODEC_PREFERENCE (avc first). */
+  codecPreference?: readonly CodecFamily[]
   /**
    * THE dial. 0 = nearly clean, 1 = falls apart. Mapped to a per-codec QP in ./quantizer.ts.
+   * Left undefined, it takes the picked family's default from ./codecs.ts.
    */
   coarseness?: number
   /** Bypass `coarseness` with a raw per-codec quantizer value. Advanced. */
@@ -72,9 +79,16 @@ export interface RoundTripProps {
   /** 0..1 — encode below display resolution and let the canvas upscale. Cheap, very effective. */
   encodeScale?: number
 
-  /** Frames between keyframes. 'infinite' = keyFrame:true on frame 0 only, never again. */
+  /**
+   * Frames between keyframes. 'infinite' = keyFrame:true on frame 0 only, never again.
+   * Left undefined, it takes the picked family's default from ./codecs.ts.
+   */
   gop?: number | 'infinite'
-  /** Drop chunks between encoder and decoder. See MoshConfig. */
+  /**
+   * Drop chunks between encoder and decoder. See MoshConfig.
+   * Left undefined, it takes the picked family's default from ./codecs.ts — which is a mosh
+   * for AVC/HEVC and none for AV1/VP9, where it does not produce the look.
+   */
   mosh?: MoshConfig | false
 
   className?: string

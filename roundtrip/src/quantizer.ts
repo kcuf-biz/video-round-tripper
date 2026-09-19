@@ -48,8 +48,18 @@ export function encodeOptionsFor(family: CodecFamily, quantizer: number): VideoE
       return { av1: { quantizer: q } } as VideoEncoderEncodeOptions
     case 'vp9':
       return { vp9: { quantizer: q } } as VideoEncoderEncodeOptions
-    case 'avc':
     case 'hevc':
+      /*
+       * HEVC HAS ITS OWN SLOT, and putting its quantizer in the `avc` one does not error —
+       * it is silently ignored. Measured at 864x544, 14 frames, Chrome 150 / macOS:
+       *   { avc: { quantizer } }   q20 and q45 both 7450 bytes/frame, and only 2 of 14
+       *                            frames ever came back out of the encoder.
+       *   { hevc: { quantizer } }  q20 2876 bytes/frame, q45 499, all 14 frames emitted.
+       * So the dial did nothing at all on HEVC. That was harmless while HEVC was last in the
+       * probe order and never won; it is not harmless now that it is second.
+       */
+      return { hevc: { quantizer: q } } as VideoEncoderEncodeOptions
+    case 'avc':
       return { avc: { quantizer: q } } as VideoEncoderEncodeOptions
   }
 }

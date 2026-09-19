@@ -43,6 +43,10 @@ describe('encodeOptionsFor', () => {
     expect(encodeOptionsFor('av1', 40)).toEqual({ av1: { quantizer: 40 } })
     expect(encodeOptionsFor('vp9', 40)).toEqual({ vp9: { quantizer: 40 } })
     expect(encodeOptionsFor('avc', 40)).toEqual({ avc: { quantizer: 40 } })
+    // HEVC gets its OWN slot. In the `avc` one Chrome ignores it silently — measured at
+    // 864x544, q20 and q45 both produced 7450 bytes/frame and only 2 of 14 frames ever came
+    // back out of the encoder, against 2876/499 and all 14 with `hevc`.
+    expect(encodeOptionsFor('hevc', 40)).toEqual({ hevc: { quantizer: 40 } })
   })
 
   it('clamps to the codec range rather than passing an illegal value to the encoder', () => {

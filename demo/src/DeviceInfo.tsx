@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { probeCodec } from '@video-round-tripper/roundtrip'
+import { encodeSize, probeCodec } from '@video-round-tripper/roundtrip'
 
 /**
  * What this device can actually do. Worth showing because the demo is usually opened over the
@@ -19,10 +19,22 @@ export function DeviceInfo() {
       const have = typeof VideoEncoder !== 'undefined'
       lines.push(`VideoEncoder: ${have ? 'present' : 'MISSING'}`)
       if (have) {
-        const choice = await probeCodec({ width: 640, height: 480, framerate: 60 })
+        /*
+         * Probed at the REAL coded size, not at a nominal 640x480: the codec string's level is
+         * derived from the coded area and Chrome's encoder enforces it for AVC, so a probe at
+         * a small size happily reports a codec the actual stage would be refused.
+         *
+         * Through encodeSize(), though, not the raw viewport. Chrome's AVC encoder REFUSES AN
+         * ODD DIMENSION outright while HEVC accepts it — measured here at 606x713: both avc1
+         * strings false, hev1 true; at 606x714 all three true. The pipeline always encodes an
+         * even size, so probing the raw viewport reports a codec the pipeline would never
+         * have picked.
+         */
+        const enc = encodeSize(window.innerWidth, window.innerHeight, 1)
+        const choice = await probeCodec({ ...enc, framerate: 60 })
         lines.push(
           choice
-            ? `picked: ${choice.codec}\n  ${choice.hardwareAcceleration} · ${choice.bitrateMode}`
+            ? `picked: ${choice.family} — ${choice.codec}\n  ${choice.hardwareAcceleration} · ${choice.bitrateMode}`
             : 'picked: nothing supported',
         )
       }
