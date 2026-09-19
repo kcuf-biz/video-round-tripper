@@ -1,6 +1,6 @@
 import type { CodecChoice, MoshConfig } from '../types.ts'
 import { encodeOptionsFor, quantizerFor } from '../quantizer.ts'
-import { createMoshFilter } from '../mosh.ts'
+import { createMoshFilter, sameMoshConfig } from '../mosh.ts'
 import { shouldDropForBackpressure } from '../frameBudget.ts'
 
 /**
@@ -131,11 +131,23 @@ export function createPipeline(opts: PipelineOptions): Pipeline {
       if (next.coarseness !== undefined) coarseness = next.coarseness
       if (next.rawQuantizer !== undefined) rawQuantizer = next.rawQuantizer
       if (next.gop !== undefined) gop = next.gop
-      if (next.mosh !== undefined) {
+      if (next.mosh !== undefined && !sameMoshConfig(mosh, next.mosh)) {
+        /*
+         * Two things are load-bearing here.
+         *
+         * 1. The value comparison. A React caller naturally hands us a fresh config object on
+         *    every render; rebuilding the filter each time would restart its PRNG and make
+         *    dropDeltaChance non-reproducible.
+         * 2. Carrying `filter.primed` across the swap. Priming belongs to the decoder, which
+         *    is still running and still primed. Handing a new filter a false `primed` makes it
+         *    drop every chunk until it sees a keyframe — and under `gop: 'infinite'` there is
+         *    never another one, so the picture freezes permanently and looks like a crash.
+         *
+         * Deliberately NOT resetting the counters or forcing a keyframe: turning moshing on
+         * should bloom from wherever the stream currently is, not from a clean slate.
+         */
+        filter = createMoshFilter(next.mosh, filter.primed)
         mosh = next.mosh
-        filter = createMoshFilter(mosh)
-        // Deliberately NOT resetting `index` or forcing a keyframe: turning moshing on should
-        // bloom from wherever the stream currently is, not from a clean slate.
       }
     },
     close() {

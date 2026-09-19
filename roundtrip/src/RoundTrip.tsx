@@ -182,7 +182,7 @@ export function RoundTrip(props: RoundTripProps) {
       setStatus('running')
       setMessage(`${choice.codec} · ${choice.hardwareAcceleration} · ${choice.bitrateMode}`)
 
-      const pacer = createPacer(dials.current.captureFps)
+      const pacer = createPacer()
 
       /*
        * 'on-interaction' exists for the case where the rasterizer is too slow to run
@@ -210,7 +210,7 @@ export function RoundTrip(props: RoundTripProps) {
         raf = requestAnimationFrame(tick)
         const now = performance.now()
         if (!isAwake(captureMode, now, wokeAt, WAKE_MS)) return
-        if (inFlight || !pacer.due(now)) return
+        if (inFlight || !pacer.due(now, dials.current.captureFps)) return
         pacer.mark(now)
         inFlight = true
         try {

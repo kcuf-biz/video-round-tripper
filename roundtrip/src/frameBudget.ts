@@ -8,16 +8,21 @@
  */
 
 export interface Pacer {
-  /** Has enough time passed to capture again? */
-  due(now: number): boolean
+  /**
+   * Has enough time passed to capture again?
+   *
+   * `fps` is passed per call rather than captured at construction: the pacer lives inside a
+   * long-lived capture loop, so baking the rate in at creation meant changing captureFps did
+   * nothing at all until something else forced a full pipeline rebuild.
+   */
+  due(now: number, fps: number): boolean
   mark(now: number): void
 }
 
-export function createPacer(fps: number): Pacer {
-  const interval = 1000 / Math.max(1, fps)
+export function createPacer(): Pacer {
   let last = -Infinity
   return {
-    due: (now) => now - last >= interval,
+    due: (now, fps) => now - last >= 1000 / Math.max(1, fps),
     mark: (now) => {
       last = now
     },

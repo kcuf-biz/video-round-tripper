@@ -29,15 +29,24 @@ function mulberry32(seed: number): () => number {
 export interface MoshFilter {
   decide(type: 'key' | 'delta', index: number): MoshDecision
   reset(): void
+  /** Has a keyframe been let through yet? The pipeline carries this across filter swaps. */
+  readonly primed: boolean
 }
 
-export function createMoshFilter(cfg: MoshConfig | false): MoshFilter {
+/**
+ * `alreadyPrimed` exists because priming is a property of the DECODER's lifetime, not of any
+ * one filter. Swapping the filter mid-stream (which happens on every prop change) must not
+ * un-prime a decoder that is already running: an unprimed filter drops everything until it
+ * sees a keyframe, and under `gop: 'infinite'` there is never another one, so the stream dies
+ * silently and permanently. That was a real bug, not a hypothetical.
+ */
+export function createMoshFilter(cfg: MoshConfig | false, alreadyPrimed = false): MoshFilter {
   if (!cfg) {
-    return { decide: () => 'pass', reset: () => {} }
+    return { decide: () => 'pass', reset: () => {}, get primed() { return true } }
   }
   const { dropKeyframesAfter, dropDeltaChance = 0, seed = 1 } = cfg
   let rand = mulberry32(seed)
-  let primed = false
+  let primed = alreadyPrimed
 
   return {
     decide(type, index) {
@@ -59,5 +68,19 @@ export function createMoshFilter(cfg: MoshConfig | false): MoshFilter {
       primed = false
       rand = mulberry32(seed)
     },
+    get primed() {
+      return primed
+    },
   }
+}
+
+/** Value equality, so identity churn from a re-rendering caller does not rebuild the filter. */
+export function sameMoshConfig(a: MoshConfig | false, b: MoshConfig | false): boolean {
+  if (a === b) return true
+  if (!a || !b) return false
+  return (
+    a.dropKeyframesAfter === b.dropKeyframesAfter &&
+    a.dropDeltaChance === b.dropDeltaChance &&
+    a.seed === b.seed
+  )
 }

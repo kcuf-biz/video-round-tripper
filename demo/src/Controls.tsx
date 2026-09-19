@@ -139,6 +139,13 @@ export function Controls({ k, set }: { k: Knobs; set: (n: Partial<Knobs>) => voi
           drop chunks before the decoder
         </label>
       </div>
+      {k.mosh && k.gopInfinite && k.dropDeltaChance === 0 && (
+        <p className="warn">
+          Mosh drops keyframes, but “never send another keyframe” means there are none after
+          the first to drop — so this does nothing right now. Uncheck it and set a GOP, or
+          raise “drop delta chance”.
+        </p>
+      )}
       {k.mosh && (
         <>
           <div className="row">

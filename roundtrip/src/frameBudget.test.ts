@@ -20,11 +20,20 @@ describe('encodeSize', () => {
 
 describe('createPacer', () => {
   it('gates on the interval and is due immediately on first call', () => {
-    const p = createPacer(10) // 100ms
-    expect(p.due(0)).toBe(true)
+    const p = createPacer()
+    expect(p.due(0, 10)).toBe(true) // 100ms
     p.mark(0)
-    expect(p.due(50)).toBe(false)
-    expect(p.due(100)).toBe(true)
+    expect(p.due(50, 10)).toBe(false)
+    expect(p.due(100, 10)).toBe(true)
+  })
+
+  it('REGRESSION: a changed fps takes effect on the very next call', () => {
+    // The rate used to be baked in at construction, inside a long-lived capture loop, so
+    // dragging captureFps did nothing until something else forced a full pipeline rebuild.
+    const p = createPacer()
+    p.mark(0)
+    expect(p.due(50, 10)).toBe(false) // 100ms interval: not yet
+    expect(p.due(50, 60)).toBe(true) // same instant, faster rate: due now
   })
 })
 

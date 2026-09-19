@@ -72,3 +72,12 @@ body {
   white-space: pre-wrap;
   word-break: break-word;
 }
+
+.panel .warn {
+  font: 11px/1.5 var(--mono);
+  color: #ffd27a;
+  background: #2b2418;
+  border-left: 2px solid #ffd27a;
+  padding: 7px 9px;
+  margin: 0 0 12px;
+}
