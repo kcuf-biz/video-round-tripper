@@ -81,3 +81,14 @@ body {
   padding: 7px 9px;
   margin: 0 0 12px;
 }
+
+.panel .presets { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 4px; }
+.panel .presets button {
+  font: 11px var(--mono);
+  padding: 5px 8px;
+  background: #141517;
+  color: var(--text);
+  border: 1px solid var(--border);
+  cursor: pointer;
+}
+.panel .presets button:hover { border-color: var(--accent); color: var(--accent); }

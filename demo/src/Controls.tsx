@@ -39,10 +39,49 @@ export function moshFrom(k: Knobs): MoshConfig | false {
   }
 }
 
+
+/**
+ * Measured starting points. Dropping a keyframe is what produces the bloom, so the GOP sets
+ * how often that can happen: there is nothing to drop between keyframes. dropDeltaChance
+ * tears without needing keyframes at all, which is the only thing that does anything when
+ * keyframes are switched off entirely.
+ */
+export const PRESETS: { name: string; hint: string; knobs: Partial<Knobs> }[] = [
+  {
+    name: 'clean',
+    hint: 'no moshing, just compression',
+    knobs: { mosh: false, gopInfinite: true, coarseness: 0.78 },
+  },
+  {
+    name: 'occasional bloom',
+    hint: 'mostly coherent, collapses now and then — the classic datamosh',
+    knobs: { mosh: true, gopInfinite: false, gop: 20, dropKeyframesAfter: 0, dropDeltaChance: 0, coarseness: 0.8 },
+  },
+  {
+    name: 'constant churn',
+    hint: 'never settles; busier and choppier',
+    knobs: { mosh: true, gopInfinite: false, gop: 8, dropKeyframesAfter: 0, dropDeltaChance: 0, coarseness: 0.82 },
+  },
+  {
+    name: 'tearing only',
+    hint: 'continuous decay, no keyframes involved',
+    knobs: { mosh: true, gopInfinite: true, dropKeyframesAfter: 0, dropDeltaChance: 0.08, coarseness: 0.8 },
+  },
+]
+
 export function Controls({ k, set }: { k: Knobs; set: (n: Partial<Knobs>) => void }) {
   return (
     <aside className="panel">
-      <h2>Encoder</h2>
+      <h2>Presets</h2>
+      <div className="presets">
+        {PRESETS.map((p) => (
+          <button key={p.name} type="button" title={p.hint} onClick={() => set(p.knobs)}>
+            {p.name}
+          </button>
+        ))}
+      </div>
+
+      <h2 style={{ marginTop: 18 }}>Encoder</h2>
 
       <div className="row">
         <label className="check">

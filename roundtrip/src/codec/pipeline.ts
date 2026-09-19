@@ -34,7 +34,14 @@ export interface Pipeline {
   /** Live-update the artifact dials without tearing the pipeline down. */
   tune(next: Partial<Pick<PipelineOptions, 'coarseness' | 'rawQuantizer' | 'gop' | 'mosh'>>): void
   close(): void
-  readonly stats: { encoded: number; decoded: number; dropped: number; moshed: number }
+  readonly stats: {
+    encoded: number
+    decoded: number
+    dropped: number
+    moshed: number
+    /** How many times the decoder died and was rebuilt. Under moshing this is expected. */
+    decoderResets: number
+  }
 }
 
 export function createPipeline(opts: PipelineOptions): Pipeline {
@@ -47,36 +54,82 @@ export function createPipeline(opts: PipelineOptions): Pipeline {
   let inputIndex = 0
   let outputIndex = 0
   let closed = false
-  const stats = { encoded: 0, decoded: 0, dropped: 0, moshed: 0 }
+  const stats = { encoded: 0, decoded: 0, dropped: 0, moshed: 0, decoderResets: 0 }
 
-  const decoder = new VideoDecoder({
-    output: (frame) => {
-      stats.decoded++
-      // Ownership passes to the consumer, which must close it. RoundTrip does so after paint.
-      opts.onPicture(frame)
-    },
-    error: (e) => opts.onError(new Error('decoder: ' + e.message)),
-  })
-  decoder.configure({ codec: opts.codec, codedWidth: opts.width, codedHeight: opts.height })
+  /*
+   * THE DECODER IS EXPECTED TO DIE, AND MUST BE ABLE TO COME BACK.
+   *
+   * A keyframe resets the reference-frame buffers. Drop one -- which is the entire point of
+   * moshing -- and every delta after it references state the decoder never received. A
+   * conformant decoder answers that with "Decoding error", and a VideoDecoder that errors is
+   * CLOSED: every later decode() throws, so the picture stops forever after a single lovely
+   * frame. That is not the piece failing, it is the piece working; the bug was having no way
+   * back.
+   *
+   * So: rebuild the decoder, ask the encoder for a keyframe, and let that one keyframe
+   * through regardless of what the mosh config says. The visible result is bloom -> collapse
+   * -> snap back to clean -> bloom again, which is what datamoshing actually looks like. The
+   * recovery is the aesthetic, not a patch over it.
+   */
+  let decoder = makeDecoder()
+  let needKeyframe = false // ask the encoder for one
+  let awaitingRecoveryKey = false // and let it past the filter when it arrives
+
+  function makeDecoder(): VideoDecoder {
+    const d = new VideoDecoder({
+      output: (frame) => {
+        stats.decoded++
+        // Ownership passes to the consumer, which must close it. RoundTrip does so after paint.
+        opts.onPicture(frame)
+      },
+      error: () => {
+        // Expected under moshing. Do NOT surface as an error; arm the recovery instead.
+        stats.decoderResets++
+        needKeyframe = true
+        awaitingRecoveryKey = true
+      },
+    })
+    d.configure({ codec: opts.codec, codedWidth: opts.width, codedHeight: opts.height })
+    return d
+  }
 
   const encoder = new VideoEncoder({
     output: (chunk, meta) => {
       stats.encoded++
-      const decision = filter.decide(chunk.type as 'key' | 'delta', outputIndex)
+      const isKey = (chunk.type as 'key' | 'delta') === 'key'
+
+      let decision: 'pass' | 'drop'
+      if (awaitingRecoveryKey) {
+        // Deltas are useless to a decoder with no reference. Hold until the keyframe lands.
+        if (!isKey) {
+          stats.moshed++
+          outputIndex++
+          return
+        }
+        decision = 'pass'
+        awaitingRecoveryKey = false
+      } else {
+        decision = filter.decide(chunk.type as 'key' | 'delta', outputIndex)
+      }
       outputIndex++
       if (decision === 'drop') {
         stats.moshed++
         return
       }
       try {
+        if (decoder.state === 'closed') decoder = makeDecoder()
         // Codec-specific setup (SPS/PPS for AVC, sequence header for AV1) arrives on the
         // first chunk's metadata. Without re-applying it the decoder cannot start.
         if (meta?.decoderConfig && decoder.state === 'configured') {
           decoder.configure(meta.decoderConfig)
         }
         decoder.decode(chunk)
-      } catch (e) {
-        opts.onError(e instanceof Error ? e : new Error(String(e)))
+      } catch {
+        // A decode that throws means the decoder is gone; recover on the next keyframe
+        // rather than tearing the whole pipeline down.
+        stats.decoderResets++
+        needKeyframe = true
+        awaitingRecoveryKey = true
       }
     },
     error: (e) => opts.onError(new Error('encoder: ' + e.message)),
@@ -115,11 +168,13 @@ export function createPipeline(opts: PipelineOptions): Pipeline {
           return
         }
         const q = rawQuantizer ?? quantizerFor(opts.family, coarseness)
+        const keyFrame = needKeyframe || wantsKeyframe(inputIndex)
         const encOpts: VideoEncoderEncodeOptions =
           opts.bitrateMode === 'quantizer'
-            ? { ...encodeOptionsFor(opts.family, q), keyFrame: wantsKeyframe(inputIndex) }
-            : { keyFrame: wantsKeyframe(inputIndex) }
+            ? { ...encodeOptionsFor(opts.family, q), keyFrame }
+            : { keyFrame }
         encoder.encode(frame, encOpts)
+        if (keyFrame) needKeyframe = false
         inputIndex++
       } catch (e) {
         opts.onError(e instanceof Error ? e : new Error(String(e)))
