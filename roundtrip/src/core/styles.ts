@@ -1,3 +1,15 @@
+/**
+ * The occlusion layer's CSS, as a string injected at runtime rather than as a .css file.
+ *
+ * WHY A STRING. The package has to be droppable onto a page we do not own — from the IIFE
+ * bundle, or as a React island inside someone else's build. A `.css` import is a build-tool
+ * contract: it only works if the consumer's bundler handles CSS imports the way Vite does, and
+ * it gives an injected <script> no way to bring its styles with it at all. Injecting is the one
+ * form that works in every case, and the rules below are non-negotiable for correctness (the
+ * canvas MUST be opaque and exactly cover the content), not cosmetic, so leaving them to the
+ * consumer to wire up is not an option either.
+ */
+export const ROUNDTRIP_CSS = `
 /*
  * The occlusion layer.
  *
@@ -62,4 +74,25 @@
 }
 .rt-status:empty {
   display: none;
+}
+`
+
+/** Marks our injected <style> so a second mount in the same document reuses it. */
+const MARKER = 'data-rt'
+
+/**
+ * Inject the stylesheet into `doc`, once.
+ *
+ * Idempotent on purpose: every entry point calls it (the React wrapper from a LAYOUT effect,
+ * so the rules land before the first paint rather than one frame after it; `createRoundTrip`
+ * defensively, so the vanilla and IIFE paths are covered without the caller knowing) and
+ * multiple RoundTrips on one page share the single tag.
+ */
+export function ensureStyles(doc: Document = document): void {
+  if (typeof doc === 'undefined' || !doc.head) return
+  if (doc.querySelector(`style[${MARKER}]`)) return
+  const style = doc.createElement('style')
+  style.setAttribute(MARKER, '')
+  style.textContent = ROUNDTRIP_CSS
+  doc.head.appendChild(style)
 }
