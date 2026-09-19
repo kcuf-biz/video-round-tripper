@@ -38,8 +38,16 @@ export interface CaptureSource {
   grab(timestamp: number): Promise<VideoFrame>
   /** Release anything retained (cached CSS, scratch canvases, observers). */
   dispose(): void
-  /** What the most recent grab() could not reproduce. Optional: not every source degrades. */
-  report?(): CaptureReport
+  /**
+   * What the most recent grab() could not reproduce.
+   *
+   * Optional twice over: not every source degrades, and a source that does has nothing to
+   * report until it has actually captured something. `undefined` therefore means "no frame
+   * yet", which is NOT the same answer as a report of zeroes, and a source must not fake the
+   * second — a page with a blocked image reading `blockedImages: 0` is precisely the silent
+   * degradation this interface exists to make visible.
+   */
+  report?(): CaptureReport | undefined
 }
 
 export type CodecFamily = 'avc' | 'vp9' | 'av1' | 'hevc'

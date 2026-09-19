@@ -1,6 +1,5 @@
 import type { CaptureReport, CaptureSource } from '../types.ts'
 import { createResourceCache, prepareClone, type ResourceCache } from './inlineResources.ts'
-import { emptyReport } from './report.ts'
 
 /**
  * The default capture path: serialize the live element into an SVG <foreignObject>, load it
@@ -46,9 +45,16 @@ export function createForeignObjectSource(
   const scratch = document.createElement('canvas')
   const ctx = scratch.getContext('2d', { alpha: false, willReadFrequently: false })
   let disposed = false
-  // What the LAST grab could not reproduce, not a running total: "what is this page degrading
-  // on right now" is the question the report answers.
-  let last: CaptureReport = emptyReport()
+  /*
+   * What the LAST grab could not reproduce, not a running total: "what is this page degrading
+   * on right now" is the question the report answers.
+   *
+   * Undefined until the first grab finishes, and deliberately NOT an empty report. Seeding it
+   * with zeroes was measured lying on the hostile page: the controller resolves its codec
+   * asynchronously and paints nothing until then, so the panel sat reading "0 blocked images"
+   * over a page with a known blocked image. Zeroes have to mean "captured, lost nothing".
+   */
+  let last: CaptureReport | undefined
 
   async function grab(timestamp: number): Promise<VideoFrame> {
     if (disposed) throw new Error('capture source disposed')
@@ -58,6 +64,21 @@ export function createForeignObjectSource(
 
     const css = await cache.css()
     const clone = element.cloneNode(true) as HTMLElement
+    /*
+     * PIN THE CLONE'S BOX. The clone renders as the root of a document with none of its
+     * ancestors in it, so every percentage in its own sizing resolves against nothing: an
+     * element laid out by `height: 100%` inside a bounded parent — which is exactly what
+     * .rt-content is — collapses to its content height in the clone. Measured on example.com
+     * through the IIFE: the SVG viewport was 1152x885 and the clone filled the top 128px of
+     * it, so 85% of every frame was empty. The measured box is the ground truth here; the
+     * cascade cannot be.
+     *
+     * The LIVE layout box, not the encode size: those differ under encodeScale, and the
+     * clone's job is to look like the element does, not like the encoder's frame.
+     */
+    clone.style.boxSizing = 'border-box'
+    clone.style.width = `${element.offsetWidth || w}px`
+    clone.style.height = `${element.offsetHeight || h}px`
     const prepared = await prepareClone(element, clone, cache)
     last = prepared.report
 

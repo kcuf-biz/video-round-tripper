@@ -66,6 +66,29 @@ export function mountRoundTrip(target: HTMLElement, opts: MountOptions = {}): Mo
     root.style.height = '100dvh' // mobile: avoid the collapsing-toolbar jump
   }
 
+  /*
+   * THE PAGE'S GROUND HAS TO BE CARRIED ONTO .rt-content, or a page mounted on <body>
+   * round-trips as black.
+   *
+   * html and body are special: their background paints the VIEWPORT canvas, not their own box,
+   * and a `body { background: #eee }` rule matches nothing at all once the content is cloned
+   * into an SVG where there is no body. Measured through the IIFE on example.com — dark text
+   * on an implicit white ground came back as dark text on black, i.e. an empty frame, with no
+   * error anywhere. Capture cannot infer this: the colour is real and is simply not in the
+   * subtree being captured.
+   *
+   * Only for the body/html case, and only the resolved colour: anything else is the caller's
+   * own element and already paints its own background.
+   */
+  if (target === doc.body || target === doc.documentElement) {
+    const view = doc.defaultView
+    const opaque = (c: string) => !!c && c !== 'transparent' && !/^rgba\(0, 0, 0, 0\)$/.test(c)
+    const htmlBg = view ? view.getComputedStyle(doc.documentElement).backgroundColor : ''
+    const bodyBg = view && doc.body ? view.getComputedStyle(doc.body).backgroundColor : ''
+    const ground = opaque(htmlBg) ? htmlBg : opaque(bodyBg) ? bodyBg : ''
+    if (ground) content.style.backgroundColor = ground
+  }
+
   // Remember where the children came from so unmount() can put them back in order.
   const moved = Array.from(target.childNodes)
   for (const node of moved) content.appendChild(node)
