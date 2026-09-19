@@ -17,6 +17,21 @@ export default defineConfig({
     // Scoped to this tailnet's domain rather than `true`, which would allow any host.
     allowedHosts: ['.ts.net'],
   },
+  build: {
+    rollupOptions: {
+      /*
+       * Multi-page: /hostile/ is the acid test for the capture seam — one specimen per thing
+       * that degrades silently — and it has to be a real page, not a route, because part of
+       * what it tests is a <link> stylesheet whose href sits one directory above the document.
+       *
+       * new URL() rather than node:path so this stays free of @types/node.
+       */
+      input: {
+        main: new URL('./index.html', import.meta.url).pathname,
+        hostile: new URL('./hostile/index.html', import.meta.url).pathname,
+      },
+    },
+  },
   optimizeDeps: {
     // The roundtrip package ships TypeScript source with no build step (the a source-only workspace
     // pattern). Pre-bundling it would try to treat it as a built dependency.

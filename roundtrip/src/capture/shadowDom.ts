@@ -246,16 +246,26 @@ export async function flattenShadowRoots(
       lightDst.set(srcKids[i]!, dstKids[i]!)
     }
 
-    for (const slot of Array.from(frag.querySelectorAll('slot'))) {
-      const assigned = slot.assignedNodes({ flatten: true })
+    /*
+     * assignedNodes() MUST be asked of the LIVE slot, never the cloned one.
+     *
+     * Slot assignment is a property of being in a shadow tree. A cloned <slot> sitting in a
+     * DocumentFragment is just an unknown element, so assignedNodes() on it returns [] --
+     * silently. The symptom was a capture where every slotted child had vanished and the
+     * <slot> sat there empty, with nothing logged anywhere. The two lists are index-aligned
+     * because the fragment is a node-for-node clone of the shadow root and no pass before
+     * this one adds or removes a <slot>.
+     */
+    const srcSlots = Array.from(root.querySelectorAll('slot'))
+    const dstSlots = Array.from(frag.querySelectorAll('slot'))
+    for (let i = 0; i < srcSlots.length && i < dstSlots.length; i++) {
       const taken: Node[] = []
-      for (const node of assigned) {
-        const prepared = lightDst.get(node)
-        // Prepared clone if this is one of the host's own children; otherwise a fresh clone
-        // (assignedNodes with flatten:true can reach a nested slot's fallback content).
-        taken.push(prepared ?? node.cloneNode(true))
+      for (const node of srcSlots[i]!.assignedNodes({ flatten: true })) {
+        // The prepared clone when this is one of the host's own children; otherwise a fresh
+        // clone (flatten:true can reach a nested slot's fallback content, which has none).
+        taken.push(lightDst.get(node) ?? node.cloneNode(true))
       }
-      if (taken.length > 0) slot.replaceWith(...taken)
+      if (taken.length > 0) dstSlots[i]!.replaceWith(...taken)
       // Nothing assigned: the browser renders the slot's own fallback children, and so do we,
       // by leaving the <slot> in place as a plain inline element.
     }

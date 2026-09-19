@@ -119,6 +119,22 @@ export function syncScrollState(source: Element, pairs: readonly ElementPair[]):
     d.style.right = 'auto'
     d.style.bottom = 'auto'
     d.style.margin = '0'
+    /*
+     * THE BOX HAS TO BE PINNED TOO, not just the corner.
+     *
+     * An absolutely positioned box with `auto` width shrink-to-fits, and an element that was
+     * getting its width from being a block in flow (or from left:0;right:0) has no width of
+     * its own to fall back on. Measured: the hostile page's full-bleed sticky bar collapsed
+     * from 1920px to 479px of content the moment it was anchored -- the position was right
+     * and the element was the wrong shape. It never showed on the demo page because every
+     * fixed thing there is inline-block and already sized by its content.
+     *
+     * border-box because getBoundingClientRect() reports the border box, and the bar carries
+     * horizontal padding that content-box would add on top.
+     */
+    d.style.boxSizing = 'border-box'
+    d.style.width = `${r.width}px`
+    d.style.height = `${r.height}px`
     return r
   }
 

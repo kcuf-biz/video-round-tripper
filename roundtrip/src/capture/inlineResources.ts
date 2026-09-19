@@ -57,6 +57,12 @@ export interface ResourceCache {
  * A page with a 40MB sprite sheet should degrade to placeholders, not build a data: URI nobody
  * can encodeURIComponent. Over-budget resources are refused and counted exactly like a CORS
  * failure, because from the frame's point of view they are the same event.
+ *
+ * SIZE IS A PER-FRAME COST, not a one-off: every inlined byte is re-encoded into the SVG data
+ * URI on every single grab. Measured on this M4 in Chrome, encodeURIComponent runs at
+ * 8.4ms/MB (linear: 0.16MB -> 0.6ms, 0.64MB -> 5.1ms, 2.56MB -> 21.4ms, +9% output size).
+ * So this ceiling is worth ~64ms/frame of encoding on its own. It is a safety valve against a
+ * pathological page, NOT a performance target -- a page anywhere near it will not be realtime.
  */
 const BYTE_BUDGET = 8 * 1024 * 1024
 

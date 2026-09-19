@@ -10,6 +10,12 @@ import { emptyReport } from './report.ts'
  *   8ms median, 18ms p95  -> ~125fps, untainted, full font fidelity.
  * That is ~3x faster than the best library tried (snapdom, 22ms) with no dependency.
  *
+ * Re-measured after the hardening passes landed, same machine:
+ *   demo page,    1920x885, no media:            4.2ms median, 12.4ms p95
+ *   hostile page, 1920x885, canvas + 2 video:   12.6ms median, 17.4ms p95
+ * Phase breakdown on the hostile page: clone 0.2ms, prepareClone 11.8ms, serialize 0.7ms,
+ * encodeURIComponent 1.3ms, img.decode 1.1ms. Both pages stay realtime at 30fps.
+ *
  * TWO NON-OBVIOUS REQUIREMENTS, both verified rather than assumed:
  *
  * 1. DATA URI, NEVER BLOB URL. All browsers treat SVG-as-image containing <foreignObject> as

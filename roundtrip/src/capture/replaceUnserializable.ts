@@ -16,11 +16,20 @@
  * hole: a dropout. A hole reads as a layout bug, a grey block reads as the video losing
  * something — which is at least the right genre — and mid-grey is also the value the encoder
  * spends the fewest bits on, so it stays honest under coarseness.
+ *
+ * THIS IS THE EXPENSIVE PASS, and it is toDataURL that costs, not the walking. Measured on the
+ * hostile page (1920x885, one drawn canvas and two videos): the whole grab is ~15ms, of which
+ * prepareClone is 11.8ms, of which one canvas.toDataURL() is 2.5ms and two video snapshots are
+ * 3.9ms. Fetched images are cached by URL and cost nothing after the first frame; canvas and
+ * video cannot be, because their whole point is that they changed. PNG is kept over a much
+ * faster toDataURL('image/jpeg') because JPEG has no alpha, and a transparent canvas overlay
+ * would silently acquire a black ground.
  */
 
 import type { ElementPair } from './pairs.ts'
 import type { ResourceCache } from './inlineResources.ts'
 import type { CaptureReport } from './report.ts'
+import { collectCssUrls, isFontUrl, rewriteCssUrls } from './cssResources.ts'
 
 /** Mid-grey: reads as a dropout, and costs the encoder almost nothing. */
 const BLOCKED_FILL = '#8a8a8a'
@@ -174,6 +183,39 @@ function handleVideo(pair: ElementPair, report: CaptureReport): void {
 }
 
 /**
+ * url() inside a style ATTRIBUTE.
+ *
+ * Found by specimen, not by reasoning: cssResources.ts covers every stylesheet, and an inline
+ * style is not a stylesheet. It is in no document.styleSheets entry, has no cssRules and no
+ * href — so `<div style="background-image:url(https://...)">` sailed straight past all of it
+ * and rendered as a flat empty box. Which is exactly the failure mode this whole directory is
+ * about: no error, no warning, just a missing image.
+ *
+ * Common enough to matter (every framework that computes a background from data emits one),
+ * and cheap: the attribute is skipped outright unless it contains "url(".
+ */
+async function inlineStyleAttribute(
+  dst: Element,
+  baseHref: string,
+  cache: ResourceCache,
+  report: CaptureReport,
+): Promise<void> {
+  const style = dst.getAttribute('style')
+  if (!style || !style.includes('url(')) return
+
+  const inlined = new Map<string, string>()
+  await Promise.all(
+    collectCssUrls(style, baseHref).map(async (url) => {
+      const data = await cache.resource(url)
+      if (data !== null) inlined.set(url, data)
+      else if (!isFontUrl(url)) report.blockedImages++
+    }),
+  )
+  if (inlined.size === 0) return
+  dst.setAttribute('style', rewriteCssUrls(style, baseHref, (abs) => inlined.get(abs) ?? null))
+}
+
+/**
  * Replace everything whose pixels are not in its markup.
  *
  * Runs AFTER positioning (it copies the inline style positioning wrote) and BEFORE shadow
@@ -187,6 +229,8 @@ export async function replaceUnserializable(
   const jobs: Promise<void>[] = []
   for (const pair of pairs) {
     const { src, dst } = pair
+    // Inline styles resolve against the DOCUMENT, unlike a stylesheet's own rules.
+    jobs.push(inlineStyleAttribute(dst, src.ownerDocument.baseURI, cache, report))
     if (src instanceof HTMLImageElement) {
       jobs.push(handleImg(pair, cache, report))
     } else if (src instanceof SVGImageElement) {

@@ -22,7 +22,14 @@ export interface ElementPair {
    *
    * Lazy because most elements never need it, and shared because several passes each used to
    * call getComputedStyle on the same element — syncScrollState alone called it up to six
-   * times per element. It is the single most expensive thing in the capture path.
+   * times per element.
+   *
+   * MEASURED, because it was expected to be the bottleneck and is not: over the hostile page's
+   * 50 elements, pairElements() costs 0.5ms and reading a computed property off every pair
+   * costs another 0.5ms, against ~15ms for the whole grab. The plan's fallback — caching the
+   * positioned-element indices per DOM shape behind a subtree MutationObserver — would buy
+   * about 3% and was therefore NOT built. The real cost is toDataURL on canvas and video
+   * elements; see replaceUnserializable.ts.
    */
   readonly cs: CSSStyleDeclaration
 }
