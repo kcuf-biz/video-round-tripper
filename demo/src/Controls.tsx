@@ -2,6 +2,15 @@ import type { MoshConfig } from '@video-round-tripper/roundtrip'
 
 export interface Knobs {
   disabled: boolean
+  /**
+   * Leave coarseness / GOP / mosh UNSPECIFIED, so the picked codec family's defaults apply.
+   *
+   * This exists because the panel was making the per-codec default table dead code: it sent
+   * an explicit value for all three on every render, and an explicit value always wins. The
+   * state a bare <RoundTrip> is in — the one a consumer of this package actually gets — was
+   * the one state the demo could not show.
+   */
+  auto: boolean
   coarseness: number
   encodeScale: number
   captureFps: number
@@ -17,6 +26,7 @@ export interface Knobs {
 
 export const DEFAULTS: Knobs = {
   disabled: false,
+  auto: true,
   coarseness: 0.78,
   encodeScale: 1,
   captureFps: 30,
@@ -28,6 +38,17 @@ export const DEFAULTS: Knobs = {
   dropDeltaChance: 0,
   codec: 'auto',
   captureMode: 'continuous',
+}
+
+/**
+ * The knobs that have a per-codec default. Touching any of them is what takes the panel off
+ * auto: the alternative is a checkbox the user has to remember to uncheck before the slider
+ * they are already dragging does anything, which reads as the slider being broken.
+ */
+const DIAL_KEYS = ['coarseness', 'gopInfinite', 'gop', 'mosh', 'dropKeyframesAfter', 'dropDeltaChance'] as const
+
+export function touchesDials(patch: Partial<Knobs>): boolean {
+  return DIAL_KEYS.some((key) => key in patch)
 }
 
 export function moshFrom(k: Knobs): MoshConfig | false {
@@ -91,8 +112,21 @@ export function Controls({ k, set }: { k: Knobs; set: (n: Partial<Knobs>) => voi
       </div>
 
       <div className="row">
+        <label className="check">
+          <input type="checkbox" checked={k.auto} onChange={(e) => set({ auto: e.target.checked })} />
+          auto — per-codec defaults
+        </label>
+        {k.auto && (
+          <p className="note" style={{ marginTop: 6 }}>
+            coarseness, GOP and mosh are left unset, so the family the probe picks fills them
+            in. See “This device” for what they resolved to. Moving any of them takes over.
+          </p>
+        )}
+      </div>
+
+      <div className="row">
         <label>
-          coarseness <b>{k.coarseness.toFixed(2)}</b>
+          coarseness <b>{k.auto ? 'auto' : k.coarseness.toFixed(2)}</b>
         </label>
         <input
           type="range" min={0} max={1} step={0.01} value={k.coarseness}
@@ -157,7 +191,7 @@ export function Controls({ k, set }: { k: Knobs; set: (n: Partial<Knobs>) => voi
         </select>
       </div>
 
-      <h2 style={{ marginTop: 18 }}>Keyframes</h2>
+      <h2 style={{ marginTop: 18 }}>Keyframes {k.auto && <span className="auto-tag">auto</span>}</h2>
       <div className="row">
         <label className="check">
           <input type="checkbox" checked={k.gopInfinite} onChange={(e) => set({ gopInfinite: e.target.checked })} />
@@ -176,14 +210,14 @@ export function Controls({ k, set }: { k: Knobs; set: (n: Partial<Knobs>) => voi
         </div>
       )}
 
-      <h2 style={{ marginTop: 18 }}>Mosh</h2>
+      <h2 style={{ marginTop: 18 }}>Mosh {k.auto && <span className="auto-tag">auto</span>}</h2>
       <div className="row">
         <label className="check">
           <input type="checkbox" checked={k.mosh} onChange={(e) => set({ mosh: e.target.checked })} />
           drop chunks before the decoder
         </label>
       </div>
-      {k.mosh && k.gopInfinite && k.dropDeltaChance === 0 && (
+      {!k.auto && k.mosh && k.gopInfinite && k.dropDeltaChance === 0 && (
         <p className="warn">
           Mosh drops keyframes, but “never send another keyframe” means there are none after
           the first to drop — so this does nothing right now. Uncheck it and set a GOP, or

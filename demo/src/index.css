@@ -130,3 +130,15 @@ body {
   cursor: pointer;
 }
 .panel .presets button:hover { border-color: var(--accent); color: var(--accent); }
+
+/* Marks a section whose values are coming from the codec family's defaults, not from these
+   controls — the knobs still show their last value, which would otherwise read as live. */
+.auto-tag {
+  font: 10px var(--mono);
+  letter-spacing: 0.08em;
+  padding: 1px 5px;
+  border: 1px solid currentColor;
+  border-radius: 2px;
+  opacity: 0.6;
+  vertical-align: 2px;
+}

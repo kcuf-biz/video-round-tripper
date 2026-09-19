@@ -17,7 +17,13 @@ export type {
 export { ensureStyles, ROUNDTRIP_CSS } from './styles.ts'
 export { mountRoundTrip, type MountOptions, type MountedRoundTrip } from '../mount.ts'
 
-export type { CaptureSource, CodecChoice, CodecFamily, MoshConfig } from '../types.ts'
+export type {
+  CaptureReport,
+  CaptureSource,
+  CodecChoice,
+  CodecFamily,
+  MoshConfig,
+} from '../types.ts'
 
 // Swap or wrap the capture strategy.
 export { createForeignObjectSource, type ForeignObjectOptions } from '../capture/foreignObjectSource.ts'

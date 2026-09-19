@@ -6,6 +6,7 @@ import {
   type RoundTripDials,
 } from './core/createRoundTrip.ts'
 import { ensureStyles } from './core/styles.ts'
+import type { CaptureReport } from './types.ts'
 
 /**
  * Mount the round tripper onto an existing element, with no framework.
@@ -32,7 +33,7 @@ export interface MountOptions extends Omit<RoundTripCoreOptions, 'content' | 'ca
 export interface MountedRoundTrip {
   tune(dials: RoundTripDials): void
   /** The capture source's degradation report, if it has one. See RoundTripController. */
-  report(): unknown
+  report(): CaptureReport | undefined
   /** Stop, and put the host page's DOM back the way it was. */
   unmount(): void
 }

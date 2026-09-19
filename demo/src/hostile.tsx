@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react'
 import ReactDOM from 'react-dom/client'
-import { RoundTrip, createForeignObjectSource } from '@video-round-tripper/roundtrip'
+import { mountRoundTrip, type CaptureReport, type MountedRoundTrip } from '@video-round-tripper/roundtrip'
 import './index.css'
 import './hostile.css'
 
@@ -12,8 +12,9 @@ import './hostile.css'
  * Nothing here is chosen to look good; each block is the smallest thing that fails if one
  * piece of the capture seam is wrong, and fails VISIBLY rather than by throwing.
  *
- * Wrapped in <RoundTrip> for now. The vanilla mountRoundTrip path is being built in parallel
- * and this page switches over to it once it lands.
+ * Mounted with mountRoundTrip, NOT with <RoundTrip>. The React component is covered by the
+ * main demo; this page is where the vanilla path — the one the IIFE uses on a page nobody
+ * authored — gets exercised against the specimens that break capture.
  */
 
 /* Verified 2026-09-19 with curl, Origin: http://127.0.0.1:5395 —
@@ -259,77 +260,97 @@ function Specimens() {
 
 /* ----------------------------------------------------------------------- degradation report */
 
-/** Local copy: the package's exports map only exposes the root, which does not re-export it. */
-interface CaptureReport {
-  blockedImages: number
-  missingFonts: number
-  closedShadowRoots: number
-  iframes: number
-}
-
 /**
  * OUTSIDE .rt-content, like every other control on every page here: anything inside that
  * subtree is captured and round-tripped, so a panel reporting on the artifacts would be
  * encoded into them.
  *
- * It runs its own throwaway capture rather than reading the component's. RoundTrip builds its
- * source internally at the ENCODER's dimensions and does not expose it; handing it an external
- * source instead would decouple the frame size from the encoder config. One extra grab is the
- * cheaper mistake.
+ * It reads the RUNNING controller's report rather than taking its own throwaway capture. The
+ * two are not interchangeable: a separate grab builds a separate resource cache, refetches
+ * every font and image, and reports on a clone the pipeline never saw. What the panel has to
+ * answer is "what did the frame you are looking at lose", and only the controller's own source
+ * knows that.
+ *
+ * `undefined` is a real answer and is shown as one: the controller resolves its codec
+ * asynchronously and does not build a source until then, and no source has a report until the
+ * first grab completes. In a BACKGROUNDED tab that never happens at all, because capture is
+ * driven by requestAnimationFrame — see CLAUDE.md.
  */
-function Report() {
-  const [rep, setRep] = useState<CaptureReport | null>(null)
-  const [ms, setMs] = useState(0)
-  const [err, setErr] = useState('')
+function Report({ handle }: { handle: MountedRoundTrip | null }) {
+  const [rep, setRep] = useState<CaptureReport | null | undefined>(undefined)
 
-  const scan = React.useCallback(async () => {
-    const el = document.querySelector<HTMLElement>('.rt-content')
-    if (!el) return
-    const source = createForeignObjectSource(el)
-    try {
-      const t0 = performance.now()
-      const frame = await source.grab(0)
-      frame.close()
-      setMs(performance.now() - t0)
-      setRep(source.report?.() ?? null)
-      setErr('')
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : String(e))
-    } finally {
-      source.dispose()
-    }
-  }, [])
+  const read = React.useCallback(() => {
+    setRep(handle ? (handle.report() ?? null) : null)
+  }, [handle])
 
+  // Polled, because the report only exists once a frame has actually been captured and there
+  // is no event for that. Cheap: it is a property read on the live source.
   useEffect(() => {
-    void scan()
-  }, [scan])
+    read()
+    const id = window.setInterval(read, 500)
+    return () => window.clearInterval(id)
+  }, [read])
 
   return (
     <aside className="panel" style={{ position: 'fixed', right: 12, top: 12, zIndex: 50, width: 260 }}>
       <h2>Degradation</h2>
       <pre className="device">
-        {err
-          ? `error: ${err}`
-          : rep
-            ? `blocked images   ${rep.blockedImages}
+        {rep
+          ? `blocked images   ${rep.blockedImages}
 missing fonts    ${rep.missingFonts}
 closed roots     ${rep.closedShadowRoots}
-iframes          ${rep.iframes}
-grab             ${ms.toFixed(0)}ms (cold)`
-            : 'scanning…'}
+iframes          ${rep.iframes}`
+          : 'no frame captured yet'}
       </pre>
-      <button onClick={() => void scan()}>re-scan</button>
+      <button onClick={read}>re-read</button>
     </aside>
   )
 }
 
+/**
+ * The stage host. React renders the specimens into this div and then hands the div to
+ * mountRoundTrip, which MOVES those children into an .rt-content it creates.
+ *
+ * That is a deliberate trespass on React's DOM and it is safe only because the specimens are
+ * structurally static after mount: React keeps its references to the moved nodes and can still
+ * update them in place, but an insertion or removal at this level would be resolved against a
+ * parent that no longer holds them. Anything dynamic belongs inside a specimen, not here.
+ *
+ * The handle is lifted into state rather than a ref so the Report panel re-renders when the
+ * mount actually exists. StrictMode's double effect is handled by unmount(), which puts the
+ * children back where it found them.
+ */
 function Hostile() {
+  const hostRef = useRef<HTMLDivElement>(null)
+  const [handle, setHandle] = useState<MountedRoundTrip | null>(null)
+
+  useEffect(() => {
+    if (!hostRef.current) return
+    const mounted = mountRoundTrip(hostRef.current, {
+      className: 'stage',
+      coarseness: 0.8,
+      gop: 20,
+      captureFps: 20,
+    })
+    setHandle(mounted)
+    /*
+     * A debug hook, not API. This box is headless and the tab is backgrounded, so the console
+     * is the only way to reach the controller — to drive a capture by hand, or to read the
+     * report when rAF is suspended and the loop has never run.
+     */
+    ;(window as unknown as { __rt?: MountedRoundTrip }).__rt = mounted
+    return () => {
+      setHandle(null)
+      mounted.unmount()
+    }
+  }, [])
+
   return (
     <>
-      <RoundTrip className="stage" coarseness={0.8} gop={20} captureFps={20}>
+      <div ref={hostRef}>
         <Specimens />
-      </RoundTrip>
-      <Report />
+      </div>
+      <Report handle={handle} />
     </>
   )
 }

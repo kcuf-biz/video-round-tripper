@@ -1,4 +1,4 @@
-import type { CaptureSource, CodecFamily, MoshConfig } from '../types.ts'
+import type { CaptureReport, CaptureSource, CodecFamily, MoshConfig } from '../types.ts'
 import { createForeignObjectSource } from '../capture/foreignObjectSource.ts'
 import { probeCodec } from '../codec/probe.ts'
 import { createPipeline, type Pipeline } from '../codec/pipeline.ts'
@@ -60,14 +60,15 @@ export interface RoundTripController {
   /** Live-update the artifact dials. Anything else needs dispose() + a new controller. */
   tune(dials: RoundTripDials): void
   /**
-   * What the capture source had to give up on for the current frame (blocked images, fonts it
-   * could not inline, and so on), or undefined if the source does not report.
+   * What the capture source had to give up on for the most recent frame — blocked images,
+   * fonts it could not inline, closed shadow roots, iframes.
    *
-   * Loosely typed on purpose: the source-side report is being added on another branch, and
-   * this passthrough exists so the degradation is reachable from a consumer without this file
-   * having to know its shape yet.
+   * `undefined` means there is nothing to report ON, not that nothing was lost: the controller
+   * has not built its source yet (the probe is async), it has been disposed, or a caller-
+   * supplied source does not implement `report()`. A source that reports and lost nothing
+   * returns zeroes. Those are different answers and the demo panels distinguish them.
    */
-  report(): unknown
+  report(): CaptureReport | undefined
   dispose(): void
 }
 
@@ -306,7 +307,7 @@ export function createRoundTrip(opts: RoundTripCoreOptions): RoundTripController
       })
     },
     report() {
-      return (source as { report?: () => unknown } | null)?.report?.()
+      return source?.report?.()
     },
     dispose() {
       disposed = true

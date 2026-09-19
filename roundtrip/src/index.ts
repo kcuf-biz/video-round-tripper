@@ -16,6 +16,7 @@ export type {
 export { mountRoundTrip, type MountOptions, type MountedRoundTrip } from './mount.ts'
 export { ensureStyles, ROUNDTRIP_CSS } from './core/styles.ts'
 export type {
+  CaptureReport,
   CaptureSource,
   CodecChoice,
   CodecFamily,
