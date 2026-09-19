@@ -1,9 +1,40 @@
 .page {
-  background: var(--paper);
-  color: var(--ink);
+  /*
+   * Inverted: off-black ground, warm off-white type. The ground is a long top-to-bottom ramp
+   * over the full 300vh, which makes it the best banding specimen on the sheet — smooth dark
+   * gradients are where an encoder's limited code words show up as visible contours, and
+   * stretching the ramp over three viewports makes each step as shallow as possible.
+   */
+  min-height: 300vh;
+  background: linear-gradient(180deg, #1f1d1b 0%, #15141a 45%, #08080a 100%);
+  color: #e8e4dc;
   font-family: Fraunces, Georgia, serif;
   padding: 28px 32px 32px;
 }
+
+/* --- fixed furniture -------------------------------------------------------
+   These stay put while the page scrolls under them, so each is a still object
+   against a moving field: the encoder should hold them nearly free (no motion
+   to code) while everything behind them tears. */
+.page h1,
+.page .swatches,
+.page .floating-test {
+  position: fixed;
+  z-index: 3;
+}
+.page h1 { top: 22px; left: 32px; }
+.page .swatches { left: 32px; bottom: 24px; }
+.page .floating-test {
+  left: 288px;
+  bottom: 52px;
+  font-size: 54px;
+  font-variation-settings: 'opsz' 144, 'wght' 700;
+  letter-spacing: -0.01em;
+  color: #f2efe8;
+  /* deliberately NO background: the point is type sitting straight on the ramp */
+}
+
+/* the fixed h1 no longer occupies flow, so the prose carries its own top offset (see .lede) */
 .page h1 {
   font-size: clamp(34px, 6vw, 58px);
   letter-spacing: -0.025em;
@@ -13,8 +44,8 @@
   display: inline-block;
   padding: 2px 12px;
 }
-.page .lede { font-size: 17px; margin: 14px 0 20px; max-width: 46ch; }
-.page .cols { columns: 3; column-gap: 22px; font-size: 12px; line-height: 1.42; }
+.page .lede { font-size: 17px; margin: 96px 0 20px; max-width: 46ch; color: #d8d3ca; }
+.page .cols { columns: 3; column-gap: 22px; font-size: 12px; line-height: 1.42; color: #c9c4ba; }
 @media (max-width: 720px) { .page .cols { columns: 1; } }
 .page .cols p { margin: 0 0 9px; break-inside: avoid; }
 
@@ -84,7 +115,7 @@
   font: 10px/1.4 ui-monospace, Menlo, monospace;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: #6b6862;
+  color: #98938a;
   margin-top: 5px;
 }
 

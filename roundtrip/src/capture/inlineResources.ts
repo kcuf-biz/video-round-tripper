@@ -177,17 +177,86 @@ export function syncScrollState(source: Element, clone: Element): void {
     const srcKids = Array.from(s.children)
     const dstKids = Array.from(d.children)
     for (let j = 0; j < srcKids.length && j < dstKids.length; j++) {
+      const sk = srcKids[j]!
       const dk = dstKids[j]
       if (!(dk instanceof HTMLElement)) continue
+      // A fixed child is anchored to the viewport, not to the scroller: it must NOT move.
+      if (getComputedStyle(sk).position === 'fixed') continue
       // Preserve whatever transform the child already had; the scroll offset composes as the
       // OUTERMOST operation (rightmost applies first), so the element is shifted after its
       // own transform rather than instead of it.
-      const existing = getComputedStyle(srcKids[j]!).transform
+      const existing = getComputedStyle(sk).transform
       const own = existing && existing !== 'none' ? ' ' + existing : ''
       dk.style.transform = `translate(${-left}px, ${-top}px)${own}`
     }
   }
+
+  /*
+   * position:fixed must hold still while the page scrolls under it, and it is the single
+   * trickiest thing in this file, because **a transformed element becomes the containing
+   * block for its fixed descendants**. Shifting the scroller's children therefore re-anchors
+   * every fixed element below them, silently.
+   *
+   * Compensating with an equal-and-opposite translate is the obvious repair and it is WRONG.
+   * It happens to work for `top`-anchored elements, which is exactly why it looks right at
+   * first: measured, a top-anchored header went from 17% to 100% identical across a 400px
+   * scroll. But a `bottom`-anchored element re-anchors to the bottom of the whole 300vh page
+   * rather than the viewport, so it renders far outside the frame and no translate brings it
+   * back — the anchor changed, not the offset.
+   *
+   * So: convert to absolute against whatever the clone's containing block will actually be,
+   * using coordinates measured from the live DOM. Offsets measured relative to that block
+   * already account for the scroll, because the block itself is shifted by the same amount.
+   */
+  const clonedTransform = (p: HTMLElement): boolean => {
+    const par = p.parentElement
+    return (
+      !!par &&
+      (par.scrollTop !== 0 || par.scrollLeft !== 0) &&
+      getComputedStyle(p).position !== 'fixed'
+    )
+  }
+
+  /** The ancestor the clone will position this element against. */
+  const containingBlock = (el: HTMLElement): HTMLElement | null => {
+    for (let p = el.parentElement; p; p = p.parentElement) {
+      const cs = getComputedStyle(p)
+      if (
+        p === source ||
+        cs.position !== 'static' ||
+        cs.transform !== 'none' ||
+        cs.filter !== 'none' ||
+        cs.perspective !== 'none' ||
+        /transform|filter|perspective/.test(cs.willChange) ||
+        clonedTransform(p) // static in the source, transformed once we shift it
+      ) {
+        return p
+      }
+    }
+    return null
+  }
+
+  for (let i = 0; i < src.length && i < dst.length; i++) {
+    const s = src[i]!
+    if (!(s instanceof HTMLElement)) continue
+    if (getComputedStyle(s).position !== 'fixed') continue
+    const cb = containingBlock(s)
+    if (!cb) continue
+
+    const d = dst[i]
+    if (!(d instanceof HTMLElement)) continue
+    const r = s.getBoundingClientRect()
+    const cbr = cb.getBoundingClientRect()
+    d.style.position = 'absolute'
+    d.style.left = `${r.left - cbr.left}px`
+    d.style.top = `${r.top - cbr.top}px`
+    // The offsets above are complete on their own; any of these left set would fight them.
+    d.style.right = 'auto'
+    d.style.bottom = 'auto'
+    d.style.margin = '0'
+  }
 }
+
 
 /**
  * NOT HANDLED YET — the remaining drop-anywhere work, deferred deliberately:

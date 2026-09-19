@@ -52,6 +52,13 @@ export function Page() {
           ))}
         </div>
 
+        {/*
+          Bare text on the gradient with no ground of its own — the counterpart to the h1,
+          which carries a solid cyan block behind it. Worth having both: a glyph on a flat
+          block and a glyph straight on a ramp fail differently under compression.
+        */}
+        <span className="floating-test">Test</span>
+
         {/* Live controls: proof that hit-testing passes through the canvas untouched. */}
         <form className="card" onSubmit={(e) => e.preventDefault()}>
           <b>Interaction survives</b>
