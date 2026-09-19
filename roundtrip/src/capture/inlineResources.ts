@@ -1,112 +1,134 @@
 /**
- * THE DROP-ANYWHERE SEAM.
+ * THE DROP-ANYWHERE SEAM — the entry point.
  *
- * Everything that separates "works on the page we authored" from "works on any page" lives
- * here. Right now it handles the two things the spike proved are load-bearing; the rest is
- * listed at the bottom as the explicit remaining work. Keeping this as a real module with a
- * real signature from day one means reaching drop-anywhere later is filling in one file
- * rather than restructuring the capture path.
+ * Everything that separates "works on the page we authored" from "works on any page" lives in
+ * this directory; this file is the composer. prepareClone() runs every pass over one
+ * source/clone pair, in the one order that works, and createResourceCache() holds the bytes
+ * they all share.
  *
  * Why this matters more than it looks: an <img>-loaded SVG is a SEPARATE DOCUMENT. It cannot
- * see the host page's stylesheets or fonts. Anything not inlined here simply is not there.
- * The spike measured the consequence — without font inlining the demo heading silently
- * rendered in Georgia instead of Fraunces and 32.9% of its pixels differed. It does not error.
- * It just quietly renders the wrong thing, which reads as a broken website rather than as a
- * codec artifact, i.e. it destroys the entire point of the piece.
+ * see the host page's stylesheets or fonts, and it is not allowed to fetch anything. Whatever
+ * is not inlined here simply is not there. The spike measured the consequence — without font
+ * inlining the demo heading silently rendered in Georgia instead of Fraunces and 32.9% of its
+ * pixels differed. It does not error. It just quietly renders the wrong thing, which reads as
+ * a broken website rather than as a codec artifact, i.e. it destroys the point of the piece.
+ *
+ * The passes, in `capture/`:
+ *   cssResources.ts         every stylesheet's fonts and images, inlined as data: URIs
+ *   replaceUnserializable.ts <img>/<canvas>/<video>/<iframe> — pixels that are not markup
+ *   pairs.ts                the index-matched source/clone pairing they all work against
  */
 
-/** Read every same-origin stylesheet. Cross-origin sheets throw on .cssRules and are skipped here. */
-export function collectSameOriginCss(doc: Document = document): string {
-  let css = ''
-  for (const sheet of Array.from(doc.styleSheets)) {
-    try {
-      for (const rule of Array.from(sheet.cssRules)) css += rule.cssText + '\n'
-    } catch {
-      // Cross-origin: unreadable via CSSOM. buildExternalCss() fetches these instead.
-    }
-  }
-  return css
-}
-
-const FONT_URL = /url\((https?:\/\/[^)]+?\.(?:woff2|woff|ttf|otf))\)/g
-
-async function toDataUri(url: string, mime: string): Promise<string | null> {
-  try {
-    const res = await fetch(url, { mode: 'cors' })
-    if (!res.ok) return null
-    const buf = new Uint8Array(await res.arrayBuffer())
-    let bin = ''
-    for (let i = 0; i < buf.length; i++) bin += String.fromCharCode(buf[i]!)
-    return `data:${mime};base64,${btoa(bin)}`
-  } catch {
-    return null // opaque / blocked by CORS — caller degrades rather than throws
-  }
-}
+import { collectCss, bytesToBase64, mimeFor } from './cssResources.ts'
+import { pairElements, type ElementPair } from './pairs.ts'
+import { replaceUnserializable } from './replaceUnserializable.ts'
+import { emptyReport, type CaptureReport } from './report.ts'
 
 /**
- * Fetch cross-origin stylesheets that CSSOM refuses to expose, and inline every font file
- * they reference as a data URI.
- *
- * Expensive — the spike measured 229ms and 384KB for six Fraunces faces — so this is
- * cached by createResourceCache() and reused across frames. Rebuilding it per frame is what
- * made modern-screenshot look like it was hanging: uncached, it refetched the same 384KB on
- * every single call.
+ * Cumulative across the cache's life, because the bytes are: a font that refused CORS on the
+ * first frame is still refusing on the thousandth, and refetching it to find out would undo
+ * the caching this whole file exists for.
  */
-export async function buildExternalCss(doc: Document = document): Promise<string> {
-  const links = Array.from(doc.querySelectorAll<HTMLLinkElement>('link[rel=stylesheet]'))
-  const readable = new Set<string>()
-  for (const sheet of Array.from(doc.styleSheets)) {
-    try {
-      void sheet.cssRules // same-origin, already covered by collectSameOriginCss
-      if (sheet.href) readable.add(sheet.href)
-    } catch {
-      /* cross-origin */
-    }
-  }
-
-  let css = ''
-  for (const link of links) {
-    if (!link.href || readable.has(link.href)) continue
-    let text: string
-    try {
-      const res = await fetch(link.href, { mode: 'cors' })
-      if (!res.ok) continue
-      text = await res.text()
-    } catch {
-      continue
-    }
-    const urls = Array.from(new Set(Array.from(text.matchAll(FONT_URL), (m) => m[1]!)))
-    const pairs = await Promise.all(urls.map(async (u) => [u, await toDataUri(u, 'font/woff2')] as const))
-    for (const [url, data] of pairs) if (data) text = text.replaceAll(url, data)
-    css += text + '\n'
-  }
-  return css
+export interface ResourceStats {
+  missingFonts: number
+  blockedImages: number
+  /** Total inlined payload, against BYTE_BUDGET. */
+  bytes: number
 }
 
 export interface ResourceCache {
   /** The full stylesheet to embed in the SVG. Built once, reused every frame. */
   css(): Promise<string>
-  /** Drop the cache — call when the page's stylesheets or fonts actually change. */
+  /** Any fetchable resource as a data: URI, or null if it refused. One fetch per URL, ever. */
+  resource(url: string): Promise<string | null>
+  /** Raw text of a stylesheet. Memoised alongside resource(). */
+  text(url: string): Promise<string | null>
+  readonly stats: ResourceStats
+  /** Drop the CSS blob — call when the page's stylesheets actually change. */
   invalidate(): void
   dispose(): void
 }
 
+/**
+ * A page with a 40MB sprite sheet should degrade to placeholders, not build a data: URI nobody
+ * can encodeURIComponent. Over-budget resources are refused and counted exactly like a CORS
+ * failure, because from the frame's point of view they are the same event.
+ */
+const BYTE_BUDGET = 8 * 1024 * 1024
+
+async function fetchBytes(url: string): Promise<{ bytes: Uint8Array; type: string | null } | null> {
+  try {
+    const res = await fetch(url, { mode: 'cors' })
+    if (!res.ok) return null
+    return { bytes: new Uint8Array(await res.arrayBuffer()), type: res.headers.get('content-type') }
+  } catch {
+    return null // opaque / blocked by CORS — the caller degrades rather than throws
+  }
+}
+
 export function createResourceCache(doc: Document = document): ResourceCache {
   let pending: Promise<string> | null = null
-  return {
+  // Promises, not values: two elements referencing the same URL in the same frame must share
+  // one in-flight fetch, not race two.
+  const resources = new Map<string, Promise<string | null>>()
+  const texts = new Map<string, Promise<string | null>>()
+  const stats: ResourceStats = { missingFonts: 0, blockedImages: 0, bytes: 0 }
+
+  const cache: ResourceCache = {
     css() {
-      if (!pending) {
-        pending = (async () => (await buildExternalCss(doc)) + collectSameOriginCss(doc))()
-      }
+      if (!pending) pending = collectCss(doc, cache)
       return pending
     },
+
+    resource(url) {
+      let hit = resources.get(url)
+      if (!hit) {
+        hit = (async () => {
+          if (stats.bytes >= BYTE_BUDGET) return null
+          const got = await fetchBytes(url)
+          if (!got) return null
+          if (stats.bytes + got.bytes.length > BYTE_BUDGET) return null
+          stats.bytes += got.bytes.length
+          return `data:${mimeFor(url, got.type)};base64,${bytesToBase64(got.bytes)}`
+        })()
+        resources.set(url, hit)
+      }
+      return hit
+    },
+
+    text(url) {
+      let hit = texts.get(url)
+      if (!hit) {
+        hit = (async () => {
+          try {
+            const res = await fetch(url, { mode: 'cors' })
+            return res.ok ? await res.text() : null
+          } catch {
+            return null
+          }
+        })()
+        texts.set(url, hit)
+      }
+      return hit
+    },
+
+    stats,
+
     invalidate() {
+      // Only the CSS blob. Fonts and images are keyed by URL and do not change because a
+      // stylesheet was added — refetching 384KB of Fraunces on every Astro page transition is
+      // precisely the cost this cache exists to avoid.
       pending = null
     },
+
     dispose() {
       pending = null
+      resources.clear()
+      texts.clear()
     },
   }
+
+  return cache
 }
 
 /**
@@ -259,13 +281,39 @@ export function syncScrollState(source: Element, clone: Element): void {
 
 
 /**
- * NOT HANDLED YET — the remaining drop-anywhere work, deferred deliberately:
- *  - cross-origin <img>: taints the canvas, which kills new VideoFrame(). Needs fetch+data-URI
- *    per image, and a visible degradation path for images that refuse CORS.
- *  - <canvas> descendants: cloneNode does not copy the bitmap. Needs toDataURL per canvas.
- *  - shadow DOM: not traversed by XMLSerializer; needs manual flattening.
- *  - <iframe>: renders blank inside foreignObject. Probably unfixable; document it.
- *  - CSS background-image url(): same cross-origin problem as <img>.
- *  - position:sticky inside a scroller: shifted with everything else, so it will not
- *    stick in the capture. Needs per-element handling if it ever matters.
+ * Every capture pass, over one source/clone pair, in the only order that works.
+ *
+ * ORDER IS LOAD-BEARING:
+ *  1. form state   — attributes only, no structural change.
+ *  2. positioning  — writes inline styles onto clone elements.
+ *  3. replacement  — copies the CLONE's inline style onto the substitute, so it has to see
+ *                    what positioning wrote; a fixed <canvas> would otherwise lose its anchor.
+ *  4. shadow DOM   — the only pass that ADDS nodes with no source counterpart, so it goes last
+ *                    (and recurses into itself for the content it flattens in).
+ *
+ * The pairing is built once and shared: see pairs.ts for why re-querying mid-pass is a silent
+ * correctness bug rather than an inefficiency.
  */
+export interface PreparedClone {
+  /** CSS the passes generated (flattened shadow styles), to append after the cached sheet. */
+  extraCss: string
+  /** What this capture could not reproduce. */
+  report: CaptureReport
+}
+
+export async function prepareClone(
+  source: Element,
+  clone: Element,
+  cache: ResourceCache,
+): Promise<PreparedClone> {
+  const pairs: ElementPair[] = pairElements(source, clone)
+  const report = emptyReport()
+
+  syncFormState(source, clone)
+  syncScrollState(source, clone)
+  await replaceUnserializable(pairs, cache, report)
+
+  report.missingFonts = cache.stats.missingFonts
+  report.blockedImages += cache.stats.blockedImages
+  return { extraCss: '', report }
+}
