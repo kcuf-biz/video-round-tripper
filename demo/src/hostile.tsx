@@ -92,10 +92,10 @@ function Figure({ id, label, children }: { id: string; label: string; children: 
 }
 
 /**
- * Drawn from JS, never from CSS or a bare rAF. A canvas is only ever as current as the last
- * time something drew into it, and CSS animations do not survive capture at all — an
- * <img>-loaded SVG restarts its timeline on every load, so a keyframed anything renders at
- * t=0 forever.
+ * Drawn from JS, never from CSS or a bare rAF: a canvas is only ever as current as the last
+ * time something drew into it, and nothing in the capture path can draw into it for you.
+ * (CSS keyframes elsewhere on this page DO survive now — capture/animations.ts snapshots
+ * their computed values — but a canvas is pixels, not computed style.)
  */
 function CanvasSpec() {
   const ref = useRef<HTMLCanvasElement>(null)
@@ -239,6 +239,23 @@ function Specimens() {
             title="iframe specimen"
             srcDoc="<body style='background:#6b2d8f;color:#fff;font:14px monospace'>iframe body</body>"
           />
+        </Figure>
+
+        {/*
+          The two CSS-MOTION specimens. Both are driven by `--seek` on <html>, outside the
+          captured subtree — see hostile.css for why that is the specimen rather than a
+          shortcut. Without capture/animations.ts both of these serialize at their first
+          keyframe: the word sits at translateX(0) in gold and the gradient renders at the
+          @property initial values, in both cases identically no matter what --seek says.
+        */}
+        <Figure id="css-anim" label="CSS keyframes on transform + color — pinned inline">
+          <div className="box spec-anim-box">
+            <span className="spec-anim">swing</span>
+          </div>
+        </Figure>
+
+        <Figure id="css-field" label=":root-animated @property gradient, read through var(--field)">
+          <div className="box spec-field" />
         </Figure>
 
         <Figure id="form" label="live form state — projected as attributes">

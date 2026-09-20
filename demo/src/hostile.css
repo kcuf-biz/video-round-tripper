@@ -51,3 +51,76 @@
 
 .hostile .tall { padding: 18px; opacity: 0.55; }
 .hostile .tall p { max-width: 60ch; }
+
+/* ------------------------------------------------------------- animation specimens
+ *
+ * Two shapes of CSS motion, both of which used to capture frozen at their first keyframe
+ * because an <img>-loaded SVG gets a fresh timeline on every load. See capture/animations.ts.
+ *
+ * BOTH ARE SEEKED BY `--seek`, set on <html> from the console, and that is the point of the
+ * specimen rather than a testing convenience. CSS animations do not advance in a hidden tab
+ * (this box is headless, so every tab is hidden), so a negative animation-delay is the only
+ * way to move an animation to a known time here — and `--seek` living on documentElement,
+ * OUTSIDE the captured subtree, is exactly what cloneNode() cannot carry across. A specimen
+ * that only needed the clone's own markup would prove nothing.
+ */
+
+/* Registered, because an unregistered custom property does not interpolate — it flips at 50%.
+ * inherits: true so the values reach :root's `--field` and, through it, the whole page. */
+@property --g-angle { syntax: '<angle>';      initial-value: 0deg; inherits: true; }
+@property --g-hue   { syntax: '<angle>';      initial-value: 0deg; inherits: true; }
+@property --g-stop  { syntax: '<percentage>'; initial-value: 20%;  inherits: true; }
+
+/*
+ * THE KCUF SHAPE, reduced to three inputs: the animation runs on :root — OUTSIDE anything the
+ * capture walks — and the descendants never see its inputs at all, because var() substitution
+ * happens at computed-value time here. They inherit the already-resolved `--field`, which is
+ * why the capture pass snapshots resolved custom properties rather than animated inputs.
+ */
+:root {
+  --field: linear-gradient(
+    var(--g-angle),
+    hsl(var(--g-hue) 90% 45%) var(--g-stop),
+    hsl(calc(var(--g-hue) + 140deg) 85% 58%) 100%
+  );
+  animation:
+    rt-angle 37s linear infinite,
+    rt-hue 23s linear infinite,
+    rt-stop 13s ease-in-out infinite alternate;
+  animation-delay: var(--seek, 0s);
+}
+
+@keyframes rt-angle { to { --g-angle: 360deg; } }
+@keyframes rt-hue   { to { --g-hue: 360deg; } }
+@keyframes rt-stop  { to { --g-stop: 72%; } }
+
+.hostile .spec-field { background-image: var(--field); }
+
+/* The in-subtree case: an ordinary keyframe animation on an element the clone DOES carry, so
+ * the pass has to pin transform and color inline and then switch the animation off. */
+.hostile .spec-anim-box {
+  position: relative;
+  overflow: hidden;
+  background: #2b2b34;
+}
+
+.hostile .spec-anim {
+  position: absolute;
+  top: 52px;
+  left: 14px;
+  font: 700 26px/1 ui-monospace, Menlo, monospace;
+  animation:
+    rt-swing 19s ease-in-out infinite alternate,
+    rt-tint 11s linear infinite;
+  animation-delay: var(--seek, 0s);
+}
+
+@keyframes rt-swing {
+  from { transform: translateX(0) rotate(0deg); }
+  to   { transform: translateX(118px) rotate(-14deg); }
+}
+@keyframes rt-tint {
+  0%   { color: #ffd400; }
+  50%  { color: #00e5ff; }
+  100% { color: #ff0033; }
+}

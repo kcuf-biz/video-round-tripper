@@ -15,10 +15,16 @@
  *
  * The passes, in `capture/`:
  *   cssResources.ts         every stylesheet's fonts and images, inlined as data: URIs
+ *   animations.ts           CSS motion, snapshotted to inline values (the SVG's clock is t=0)
  *   replaceUnserializable.ts <img>/<canvas>/<video>/<iframe> — pixels that are not markup
  *   pairs.ts                the index-matched source/clone pairing they all work against
  */
 
+import {
+  freezeAnimations,
+  indexAnimationsByTarget,
+  snapshotInheritedCustomProperties,
+} from './animations.ts'
 import { collectCss, bytesToBase64, mimeFor } from './cssResources.ts'
 import { pairDescendants, pairElements, type ElementPair } from './pairs.ts'
 import { replaceUnserializable } from './replaceUnserializable.ts'
@@ -215,10 +221,14 @@ export function syncFormState(pairs: readonly ElementPair[]): void {
  *
  * ORDER IS LOAD-BEARING:
  *  1. form state   — attributes only, no structural change.
- *  2. positioning  — writes inline styles onto clone elements.
- *  3. replacement  — copies the CLONE's inline style onto the substitute, so it has to see
+ *  2. animations   — pins animated properties as inline values. BEFORE positioning, because
+ *                    positioning writes a COMPOSED `translate(scroll) <computed transform>`
+ *                    and this pass writes the bare animated transform: freezing second would
+ *                    overwrite the composed value and silently drop the scroll offset.
+ *  3. positioning  — writes inline styles onto clone elements.
+ *  4. replacement  — copies the CLONE's inline style onto the substitute, so it has to see
  *                    what positioning wrote; a fixed <canvas> would otherwise lose its anchor.
- *  4. shadow DOM   — the only pass that ADDS nodes with no source counterpart, so it goes last
+ *  5. shadow DOM   — the only pass that ADDS nodes with no source counterpart, so it goes last
  *                    (and recurses into itself for the content it flattens in).
  *
  * The pairing is built once and shared: see pairs.ts for why re-querying mid-pass is a silent
@@ -238,14 +248,29 @@ export async function prepareClone(
 ): Promise<PreparedClone> {
   const report = emptyReport()
 
-  /** The three index-matched passes, plus shadow flattening, over one paired subtree. */
+  /*
+   * ONE document-level getAnimations() for the whole capture, shadow subtrees included, rather
+   * than one per element or one per recursion. See animations.ts: the per-element call walks
+   * the document's animation list every time it is asked.
+   */
+  const animations = indexAnimationsByTarget(source.ownerDocument)
+
+  /** The four index-matched passes, plus shadow flattening, over one paired subtree. */
   const runPasses = async (pairs: ElementPair[]): Promise<string> => {
     syncFormState(pairs)
+    freezeAnimations(pairs, animations)
     syncScrollState(source, pairs)
     await replaceUnserializable(pairs, cache, report)
     // Last, and recursive: it is the only pass that adds nodes with no source counterpart.
     return flattenShadowRoots(pairs, cache, report, runPasses, pairDescendants)
   }
+
+  /*
+   * Root-only, and outside runPasses: the clone root is the only element that can carry the
+   * subtree's inherited custom properties, and a flattened shadow fragment has no root of its
+   * own to put them on — it inherits from this one, which is the correct answer anyway.
+   */
+  snapshotInheritedCustomProperties(source, clone)
 
   const extraCss = await runPasses(pairElements(source, clone))
 
