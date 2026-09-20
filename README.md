@@ -229,11 +229,15 @@ fallback rather than throwing.
 - **Fonts and images that refuse CORS.** Everything is fetched and inlined as a `data:` URI,
   because the SVG document cannot fetch anything itself. A server that sends no
   `Access-Control-Allow-Origin` cannot be worked around from the page.
-- **Anything animated purely in CSS.** An `<img>`-loaded SVG gets a fresh timeline on every
-  load and capture builds a new `Image` per frame, so a CSS keyframe animation renders at
-  `t=0` forever — perfect in the live DOM, frozen in the video. Measured: two captures 650ms
-  apart differed by 58.4% of pixels for a JS-driven gradient and 0.0% for a CSS-keyframed one.
-  Drive anything that moves from rAF into `element.style`.
+- **Animation on an ancestor *above* the captured subtree, of a non-custom property.** The
+  clone's own SVG timeline is always `t=0`, so CSS motion is snapshotted rather than replayed:
+  `capture/animations.ts` pins every animated property's current computed value inline, and
+  carries the whole of `getComputedStyle(root)`'s custom properties down so a `:root`-animated
+  `@property` gradient read through `var()` arrives resolved. What that cannot reach is an
+  ancestor animating an inheritable *non*-custom property (`color`, `font-size`) from outside
+  the subtree — nothing there is paired, and it is not a custom property. Effects that are not
+  `KeyframeEffect`s, and effects targeting a pseudo-element, are skipped for the same reason:
+  there is no inline style to write them to.
 - **Insecure origins.** WebCodecs is secure-context only.
 
 ## The two ideas it is built on

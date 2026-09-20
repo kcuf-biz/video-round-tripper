@@ -3,14 +3,24 @@ import { useEffect, useRef } from 'react'
 /**
  * The two ANIMATED specimens on the contact sheet.
  *
- * WHY THESE ARE JS-DRIVEN AND NOT CSS KEYFRAMES — this is the whole trick:
- * capture serializes the DOM into an SVG <foreignObject> and loads it through `new Image()`.
- * An <img>-loaded SVG gets a FRESH animation timeline on every load, and the capture builds a
- * new Image per frame, so any CSS animation renders at t=0 forever. It would look perfect in
- * the live DOM — which nobody ever sees — and sit frozen in the video, which is all anyone
- * sees. Driving the values from rAF into inline styles means the serialized markup carries the
- * CURRENT value, so the motion actually survives the round trip. Verified by diffing two
- * captures taken milliseconds apart.
+ * WHY THESE ARE STILL JS-DRIVEN, now that CSS keyframes would work too.
+ *
+ * They did not used to: capture serializes the DOM into an SVG <foreignObject> loaded through
+ * `new Image()`, that document gets a FRESH animation timeline on every load, and capture
+ * builds a new Image per frame — so a CSS animation rendered at t=0 forever. Since
+ * capture/animations.ts these specimens would survive as CSS: it snapshots the computed value
+ * of every animated property onto the clone and switches the animation off there.
+ *
+ * Kept as they are on purpose, for two reasons. First, driving inline styles from rAF is the
+ * ONE form of motion that needs nothing from the capture seam — no getAnimations(), no
+ * computed-style read, no interpolation the snapshot has to agree with — so this page keeps
+ * working as the control when something in animations.ts is suspect. Second, the values here
+ * are not keyframe interpolations at all: the ramp's two stops travel at different rates and
+ * the word runs a Lissajous with incommensurate frequencies, which is a function of t rather
+ * than a track between two stops, and expressing it in CSS would mean flattening it into
+ * keyframes and losing exactly the never-repeating quality it exists for.
+ *
+ * The CSS path has its own specimens instead — demo/src/hostile.tsx, #css-anim and #css-field.
  *
  * Why animation earns its place on an artifact contact sheet at all: a static page produces
  * near-zero inter-frame delta, which is precisely the condition under which an encoder behaves
