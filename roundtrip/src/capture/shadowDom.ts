@@ -233,13 +233,23 @@ export async function flattenShadowRoots(
     const frag = doc.createDocumentFragment()
     for (const node of Array.from(root.childNodes)) frag.appendChild(node.cloneNode(true))
 
+    /*
+     * Pair FIRST, then drop the <style>s. The pairing is index-matched against the live root,
+     * which still has its <style> elements; removing them from the clone beforehand shifted
+     * every pair by one, so each pass styled the element BEFORE the one it meant to (#74: the
+     * shadow specimen's animated bar was paired with the root's <style> and never frozen, and
+     * any shadow root opening with a <style> had its form state, positioning and replacement
+     * applied one element off). Pairs hold references, so removing afterwards is safe.
+     */
+    const shadowPairs = pairUp(root, frag).filter((p) => p.src.localName !== 'style')
+
     // <style> elements would apply unscoped in the flat document — their text goes into the
     // returned CSS, rewritten, and the elements themselves do not travel.
     for (const style of Array.from(frag.querySelectorAll('style'))) style.remove()
 
     // Pass set over the shadow content itself, BEFORE slots are resolved: the pairing is
     // node-for-node with the shadow root only while the structure still matches.
-    css += await runPasses(pairUp(root, frag))
+    css += await runPasses(shadowPairs)
 
     // The host's own light children, already fully prepared, indexed so a slot can take them.
     const lightDst = new Map<Node, Node>()

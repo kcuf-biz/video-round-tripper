@@ -61,6 +61,27 @@ export const RATE_CONTROL: Record<CodecFamily, 'quantizer' | 'constant'> = {
 const BPP_CLEAN = 3.0
 const BPP_STARVED = 0.07
 
+/**
+ * The keyframe interval `coarseness` asks for on a 'constant' family, when the caller has not
+ * set a GOP (#72).
+ *
+ * The bitrate alone stops mattering early. AV1/VP9 will not make a keyframe smaller than ~2.1KB
+ * at 344x360 (identical at 8kbps and 20kbps), so at a keyframe every 3 frames and 20fps the
+ * keys alone cost ~115kbps — more than bitrateFor() asks for anywhere above coarseness ~0.3,
+ * and from there to 1.0 every setting looked the same (the author: "the pulsing doesn't respond to the
+ * slider"). What damage there is comes from how OFTEN the frame is re-broken by a starved key,
+ * and how fast the deltas can heal it between keys — so the dial drives both. Below 0.15, no
+ * periodic keys at all: the page heals and stays clean. Geometric from a key every 60 frames
+ * to every 2, for the same reason bitrateFor is.
+ *
+ * On trial: the author agreed to test this, not to keep it.
+ */
+export function gopFor(coarseness: number): number | 'infinite' {
+  const c = clamp01(coarseness)
+  if (c < 0.15) return 'infinite'
+  return Math.max(2, Math.round(60 * Math.pow(2 / 60, (c - 0.15) / 0.85)))
+}
+
 /** The constant bitrate `coarseness` asks for on a family whose RATE_CONTROL is 'constant'. */
 export function bitrateFor(coarseness: number, width: number, height: number): number {
   const bpp = BPP_CLEAN * Math.pow(BPP_STARVED / BPP_CLEAN, clamp01(coarseness))

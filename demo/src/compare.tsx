@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import ReactDOM from 'react-dom/client'
-import { bitrateFor, mountRoundTrip, RATE_CONTROL, type CodecFamily, type MountedRoundTrip } from '@video-round-tripper/roundtrip'
+import { bitrateFor, gopFor, mountRoundTrip, RATE_CONTROL, type CodecFamily, type MountedRoundTrip } from '@video-round-tripper/roundtrip'
 import './index.css'
 
 /**
@@ -15,8 +15,8 @@ import './index.css'
  * floor) * coarseness, exactly what quantizerFor() computes, so a floor that looks right here can
  * be copied into the table verbatim.
  * av1/vp9: coarseness is a starved constant bitrate there (RATE_CONTROL in quantizer.ts), so
- * those stages just follow the slider and show the bitrate it asks for, at their default GOP 3:
- * their static page only breaks on keyframes.
+ * those stages just follow the slider and show the bitrate it asks for, with the keyframe
+ * interval also following the dial (gopFor): their static page only breaks on keyframes.
  */
 
 const FAMILIES: CodecFamily[] = ['avc', 'hevc', 'av1', 'vp9']
@@ -69,9 +69,9 @@ function Stage({ family, q, c, onReady }: { family: CodecFamily; q: number; c: n
     const h = mountRoundTrip(host.current, {
       codec: family,
       mosh: false,
-      // Each family's own GOP default: avc/hevc 20 (no visible effect with mosh off, the
-      // encoder is closed-loop), av1/vp9 3 (their starved keyframes are where the damage is).
-      gop: byRate(family) ? 3 : 20,
+      // avc/hevc: GOP 20 (no visible effect with mosh off, the encoder is closed-loop).
+      // av1/vp9: left unset, so it follows coarseness (gopFor) like a bare <RoundTrip> would.
+      gop: byRate(family) ? undefined : 20,
       coarseness: c,
       rawQuantizer: byRate(family) ? undefined : q,
       captureFps: 20,
@@ -90,7 +90,7 @@ function Stage({ family, q, c, onReady }: { family: CodecFamily; q: number; c: n
     <figure className="cmp-stage">
       <figcaption>
         <b>{family}</b>{' '}
-        {mode === 'constant' ? `${Math.round(bitrateFor(c, box.w, box.h) / 1000)} kbps` : `q${q}`}{' '}
+        {mode === 'constant' ? `${Math.round(bitrateFor(c, box.w, box.h) / 1000)} kbps, key every ${gopFor(c)}` : `q${q}`}{' '}
         <span>
           {codec || status} {mode}
         </span>

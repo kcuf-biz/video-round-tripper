@@ -76,8 +76,16 @@ describe('resolveDials', () => {
     expect(resolveDials('vp9', {}).mosh).toBe(false)
     // Finite since coarseness became a starved bitrate there (#72): the static page only
     // breaks on keyframes, and heals between them.
-    expect(resolveDials('vp9', {}).gop).toBe(3)
-    expect(resolveDials('av1', {}).gop).toBe(3)
+    expect(resolveDials('vp9', {}).gop).toBe(5)
+    expect(resolveDials('av1', {}).gop).toBe(5)
+  })
+
+  it('derives the av1/vp9 GOP from coarseness, but only when the caller left it unset (#72)', () => {
+    expect(resolveDials('av1', { coarseness: 0.1 }).gop).toBe('infinite')
+    expect(resolveDials('av1', { coarseness: 1 }).gop).toBe(2)
+    expect(resolveDials('vp9', { coarseness: 0.5 }).gop).toBe(15)
+    expect(resolveDials('av1', { coarseness: 1, gop: 30 }).gop).toBe(30)
+    expect(resolveDials('avc', { coarseness: 1 }).gop).toBe(20)
   })
 
   it('lets an explicit value win over the family default', () => {
@@ -97,6 +105,7 @@ describe('resolveDials', () => {
 
   it('fills only the undefined fields', () => {
     const r = resolveDials('av1', { coarseness: 0.2 })
-    expect(r).toEqual({ coarseness: 0.2, gop: 3, mosh: false })
+    // coarseness 0.2 on av1: the GOP follows the dial (gopFor), mosh stays off.
+    expect(r).toEqual({ coarseness: 0.2, gop: 49, mosh: false })
   })
 })

@@ -1,4 +1,5 @@
 import type { CodecFamily, MoshConfig } from './types.ts'
+import { gopFor, RATE_CONTROL } from './quantizer.ts'
 
 /**
  * Codec families, the codec strings each one expands to, and the per-family starting dials.
@@ -134,14 +135,14 @@ export interface CodecDials {
 export const CODEC_DEFAULTS: Record<CodecFamily, CodecDials> = {
   avc: { coarseness: 0.78, gop: 20, mosh: { dropKeyframesAfter: 0, keepEveryNthKeyframe: 3, seed: 1 } },
   hevc: { coarseness: 0.78, gop: 20, mosh: { dropKeyframesAfter: 0, keepEveryNthKeyframe: 3, seed: 1 } },
-  // GOP 3, not infinite, since coarseness became a starved bitrate (#72). A starved keyframe
-  // wrecks the whole frame; every delta after it spends its byte budget refining the decoder's
-  // picture toward the source, and on a static page nothing else competes for those bytes, so
-  // the page heals (measured on av1: error 11.2 at the key, back to 6.6 within ~7 frames).
-  // Without periodic keys only moving things ever look broken. GOP 20 read as a 1s pulse and
-  // GOP 6 still pulsed; GOP 3 is the author's call by eye for steady damage.
-  av1: { coarseness: 0.78, gop: 3, mosh: false },
-  vp9: { coarseness: 0.78, gop: 3, mosh: false },
+  // The GOP here is only what 0.78 resolves to: for these two, resolveDials() derives the GOP
+  // from coarseness (gopFor in quantizer.ts) unless the caller set one (#72). A starved keyframe
+  // wrecks the whole frame; every delta after it spends its budget refining the decoder's
+  // picture toward the source, and on a static page nothing competes for those bytes, so it
+  // heals (av1: error 11.2 at the key, back to 6.6 within ~7 frames). So how often the frame
+  // is re-broken IS the dial on these codecs, more than the bitrate is.
+  av1: { coarseness: 0.78, gop: gopFor(0.78), mosh: false },
+  vp9: { coarseness: 0.78, gop: gopFor(0.78), mosh: false },
 }
 
 /**
@@ -154,9 +155,11 @@ export const CODEC_DEFAULTS: Record<CodecFamily, CodecDials> = {
  */
 export function resolveDials(family: CodecFamily, requested: Partial<CodecDials>): CodecDials {
   const d = CODEC_DEFAULTS[family]
+  const coarseness = requested.coarseness ?? d.coarseness
   return {
-    coarseness: requested.coarseness ?? d.coarseness,
-    gop: requested.gop ?? d.gop,
+    coarseness,
+    // On a starved-bitrate family an unset GOP follows the dial; see gopFor.
+    gop: requested.gop ?? (RATE_CONTROL[family] === 'constant' ? gopFor(coarseness) : d.gop),
     mosh: requested.mosh ?? d.mosh,
   }
 }

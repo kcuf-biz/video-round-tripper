@@ -42,6 +42,6 @@ export {
 } from './codecs.ts'
 
 // The pure bits, exported because they are useful to test against and to reason about.
-export { bitrateFor, encodeOptionsFor, familyOf, quantizerFor, RATE_CONTROL } from './quantizer.ts'
+export { bitrateFor, encodeOptionsFor, familyOf, gopFor, quantizerFor, RATE_CONTROL } from './quantizer.ts'
 export { createMoshFilter, type MoshFilter } from './mosh.ts'
 export { contentSize, encodeSize, createPacer } from './frameBudget.ts'

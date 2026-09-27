@@ -21,6 +21,7 @@
  */
 
 import {
+  addShadowAnimations,
   freezeAnimations,
   indexAnimationsByTarget,
   snapshotInheritedCustomProperties,
@@ -266,6 +267,9 @@ export async function prepareClone(
   const runPasses = async (pairs: ElementPair[]): Promise<string> => {
     syncFormState(pairs)
     syncInteractionState(pairs)
+    // The document index cannot see into shadow trees; fold in each open root found at this
+    // level so that when flattening recurses into it, its pairs find their animations (#74).
+    for (const { src } of pairs) if (src.shadowRoot) addShadowAnimations(animations, src.shadowRoot)
     freezeAnimations(pairs, animations)
     syncScrollState(source, pairs)
     await replaceUnserializable(pairs, cache, report)

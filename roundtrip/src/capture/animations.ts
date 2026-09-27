@@ -122,7 +122,7 @@ export function snapshotInheritedCustomProperties(source: Element, clone: Elemen
 }
 
 /** Running animations and transitions of the document, grouped by the element they target. */
-export type AnimationIndex = ReadonlyMap<Element, Animation[]>
+export type AnimationIndex = Map<Element, Animation[]>
 
 /**
  * ONE getAnimations() CALL FOR THE WHOLE CAPTURE.
@@ -134,16 +134,28 @@ export type AnimationIndex = ReadonlyMap<Element, Animation[]>
  * elements and 5 animations both forms come out under the 0.1ms timer floor — so this is a
  * shape choice, not an optimisation, and the honest claim is that it does not degrade.
  *
- * Document.getAnimations() reaches into shadow trees, so the index is also correct for the
- * flattening pass, which is the other reason it is built once and handed down rather than
- * rebuilt per subtree.
+ * Document.getAnimations() does NOT reach into shadow trees. This comment used to say it did,
+ * and the shadow-root specimen froze in the video while it moved live (#74, the author at a real
+ * screen). Measured on /hostile/: the document reported 6 animations, 0 of them in a shadow
+ * tree, while the specimen's own bar reported 2 running. Each open shadow root has to be asked
+ * itself — see addShadowAnimations, which prepareClone calls as the passes reach each root.
  */
 export function indexAnimationsByTarget(doc: Document): AnimationIndex {
-  const index = new Map<Element, Animation[]>()
+  const index: AnimationIndex = new Map()
   // Both guards are for non-browser hosts (SSR, a test runner): `instanceof KeyframeEffect`
   // is a ReferenceError, not false, where the constructor does not exist.
   if (typeof doc.getAnimations !== 'function' || typeof KeyframeEffect === 'undefined') return index
-  const all = doc.getAnimations()
+  addAnimations(index, doc.getAnimations())
+  return index
+}
+
+/** Fold an open shadow root's own animations into the index, before its pairs are frozen. */
+export function addShadowAnimations(index: AnimationIndex, root: ShadowRoot): void {
+  if (typeof root.getAnimations !== 'function' || typeof KeyframeEffect === 'undefined') return
+  addAnimations(index, root.getAnimations())
+}
+
+function addAnimations(index: AnimationIndex, all: Animation[]): void {
   for (const anim of all) {
     const effect = anim.effect
     // Not a KeyframeEffect (no getKeyframes), or targeting a pseudo-element we cannot write an
@@ -153,10 +165,10 @@ export function indexAnimationsByTarget(doc: Document): AnimationIndex {
     const target = effect.target
     if (!target) continue
     const hit = index.get(target)
-    if (hit) hit.push(anim)
-    else index.set(target, [anim])
+    if (hit) {
+      if (!hit.includes(anim)) hit.push(anim)
+    } else index.set(target, [anim])
   }
-  return index
 }
 
 /**
