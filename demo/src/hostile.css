@@ -3,11 +3,21 @@
  * own — the other half of the base-href question that /public/hostile-external.css covers.
  * Every url() here is absolute for that reason.
  */
+/*
+ * #67's specimen is the whole page: its colour, face and line height are set on the mount
+ * TARGET, which is outside the captured subtree (.rt-content's parent is .rt-root inside it).
+ * Without capture/context.ts every specimen label captures as black Times. The `html` rem is
+ * the same question for `rem` — nothing in the image document matches `html`.
+ */
+html { font-size: 20px; }
+.hostile-host {
+  color: #e8e4dc;
+  font: 13px/1.5 ui-monospace, Menlo, monospace;
+}
+
 .hostile {
   min-height: 300vh;
   background: #16161a;
-  color: #e8e4dc;
-  font: 13px/1.5 ui-monospace, Menlo, monospace;
   padding: 0 0 80px;
 }
 
@@ -124,3 +134,27 @@
   50%  { color: #00e5ff; }
   100% { color: #ff0033; }
 }
+
+/* ---------------------------------------------------------------- #62, #63, #67, #68 */
+
+/* #63: a paint server reached through a CSS rule. Resolved to an absolute url, the fill became
+ * `none` and the bar vanished from the frame with no error. The third rect points at an id that
+ * is NOT in the capture, on purpose: it must vanish, and `brokenReferences` must say 1. */
+.hostile .spec-frag-css { fill: url(#spec-grad); }
+.hostile .spec-frag-missing { fill: url(#spec-nowhere); }
+
+/* #67: nothing here sets a colour, face or line height. Everything the text looks like comes
+ * from `body` in index.css, which is outside the captured subtree. The big line proves the
+ * line-height inherits as a FACTOR (1.5), not as body's 19.5px. */
+.hostile .spec-inherit { padding: 8px; height: 134px; box-sizing: border-box; }
+.hostile .spec-inherit .big { font-size: 30px; margin: 4px 0 0; }
+.hostile .spec-inherit .rem { display: block; width: 5rem; height: 6px; margin-top: 6px; background: #00e5ff; }
+
+/* #68: states. A hover that turns magenta, a press that turns white, a focus that turns the
+ * field yellow — each must reach the frame, and look late and blocky when it does. */
+.hostile .spec-states { padding: 8px; height: 134px; box-sizing: border-box; display: grid; gap: 8px; align-content: start; }
+.hostile .spec-states button { font: inherit; padding: 8px; background: #2d6cdf; color: #fff; border: 0; }
+.hostile .spec-states button:hover { background: #ff00c8; }
+.hostile .spec-states button:active { background: #fff; color: #000; }
+.hostile .spec-states input:focus { background: #ffd400; color: #000; outline: none; }
+.hostile .spec-states:focus-within { box-shadow: inset 0 0 0 3px #00e5ff; }

@@ -121,6 +121,11 @@ page holds survives. `unmount()` moves them back.
 the page scrolls inside the content rather than scrolling the canvas out of view. Pass
 `fullHeight: false` to opt out, or `true` to force it on some other element.
 
+Whatever the target inherits from above it — `color`, the font, line height, the root font
+size its `rem`s mean — and the ground it sits on, `body`'s or `html`'s background included,
+is carried into the capture. Style the page on `body` the ordinary way; there is no need to
+move it onto a wrapper element for the round tripper's sake.
+
 ### Injecting into a page you do not own
 
 ```js
@@ -195,7 +200,8 @@ counts what it had to give up on.
 
 ```js
 handle.report()
-// { blockedImages: 1, missingFonts: 0, closedShadowRoots: 1, iframes: 1 }
+// { blockedImages: 1, missingFonts: 0, closedShadowRoots: 1, iframes: 1,
+//   brokenReferences: 1, ancestorBackgroundImages: 0 }
 ```
 
 Available on the vanilla handle and on the controller from `createRoundTrip`. `undefined`
@@ -209,7 +215,19 @@ when the tab is hidden. That is correct behaviour, not a failure.)
 - `missingFonts` — `@font-face` files that could not be inlined, so that text fell back.
 - `closedShadowRoots` — custom elements that appear to hide a closed root (a heuristic).
 - `iframes` — always placeholdered, see below.
+- `brokenReferences` — `url(#id)` / `href="#id"` on SVG elements (gradients, patterns, masks,
+  filters, clip-paths, `<use>`) whose target is outside the captured subtree. SVG paints a
+  missing paint server as `none`, so each one is something that vanished. The usual cause is
+  a `<RoundTrip>` around part of a page whose `<defs>` or icon sprite sits above it.
+- `ancestorBackgroundImages` — a background image on an ancestor whose box is not the
+  capture's own (`html`/`body` are always carried). Its colour is carried; the image would be
+  positioned against a box the clone does not have, so it is left out and counted.
 
+A capture whose markup an XML parser cannot read loses the whole frame rather than one node,
+so capture strips what HTML tolerates and XML does not — comments containing `--`, framework
+directive attributes like Alpine's `@click` and `:class`, control characters. If a frame still
+fails to decode, the error names the parser's reason and the offending markup instead of the
+browser's bare "The source image cannot be decoded.
 `demo/hostile/` is a page with one specimen per case, and shows the report live.
 
 ## What cannot work
@@ -229,15 +247,15 @@ fallback rather than throwing.
 - **Fonts and images that refuse CORS.** Everything is fetched and inlined as a `data:` URI,
   because the SVG document cannot fetch anything itself. A server that sends no
   `Access-Control-Allow-Origin` cannot be worked around from the page.
-- **Animation on an ancestor *above* the captured subtree, of a non-custom property.** The
-  clone's own SVG timeline is always `t=0`, so CSS motion is snapshotted rather than replayed:
-  `capture/animations.ts` pins every animated property's current computed value inline, and
-  carries the whole of `getComputedStyle(root)`'s custom properties down so a `:root`-animated
-  `@property` gradient read through `var()` arrives resolved. What that cannot reach is an
-  ancestor animating an inheritable *non*-custom property (`color`, `font-size`) from outside
-  the subtree — nothing there is paired, and it is not a custom property. Effects that are not
-  `KeyframeEffect`s, and effects targeting a pseudo-element, are skipped for the same reason:
-  there is no inline style to write them to.
+- **Some CSS motion.** The clone's own SVG timeline is always `t=0`, so motion is snapshotted
+  rather than replayed: `capture/animations.ts` pins every animated property's current computed
+  value inline, the root's resolved custom properties are carried down, and whatever the
+  subtree inherits from its ancestors is read fresh every frame. Effects that are not
+  `KeyframeEffect`s, and effects targeting a pseudo-element, are skipped: there is no inline
+  style to write them to.
+- **The text caret and text selection.** `:hover`, `:active`, `:focus`, `:focus-visible` and
+  `:focus-within` are carried into the capture, but the caret and a selection highlight are not
+  in the DOM at all.
 - **Insecure origins.** WebCodecs is secure-context only.
 
 ## The two ideas it is built on

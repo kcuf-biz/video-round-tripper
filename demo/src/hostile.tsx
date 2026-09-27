@@ -258,6 +258,54 @@ function Specimens() {
           <div className="box spec-field" />
         </Figure>
 
+        {/*
+          #62: every one of these, alone, used to lose the WHOLE frame ("The source image
+          cannot be decoded.") — a comment with a double hyphen, Alpine's @click and :class,
+          an htmx-style prefixed name. innerHTML because React will not emit any of them.
+        */}
+        <Figure id="xml" label="comment with --, @click, :class, x-on:click — frame must survive">
+          <div
+            className="box"
+            style={{ padding: 8, height: 134, boxSizing: 'border-box' }}
+            dangerouslySetInnerHTML={{
+              __html:
+                '<!-- ---- section ---- --><p @click="go()" :class="{ on: open }" x-on:click="x">' +
+                'still here</p><!-- -- -->',
+            }}
+          />
+        </Figure>
+
+        {/* #63: a gradient fill reached through CSS, through a style attribute, and one whose
+            target is deliberately outside the capture (must vanish, and be counted). */}
+        <Figure id="fragment" label="url(#grad) via CSS / style attr / missing target — 2 bars, 1 counted">
+          <svg className="box" viewBox="0 0 260 150" preserveAspectRatio="none">
+            <defs>
+              <linearGradient id="spec-grad" x1="0" x2="1">
+                <stop offset="0" stopColor="#ff0033" />
+                <stop offset="1" stopColor="#00e5ff" />
+              </linearGradient>
+            </defs>
+            <rect className="spec-frag-css" x="10" y="14" width="240" height="34" />
+            <rect style={{ fill: 'url(#spec-grad)' }} x="10" y="58" width="240" height="34" />
+            <rect className="spec-frag-missing" x="10" y="102" width="240" height="34" />
+          </svg>
+        </Figure>
+
+        <Figure id="inherit" label="type inherited from outside the capture; line-height as a factor; 5rem at html 20px">
+          <div className="box spec-inherit">
+            inherited colour + face
+            <p className="big">big line</p>
+            <span className="rem" />
+          </div>
+        </Figure>
+
+        <Figure id="states" label=":hover / :active / :focus / :focus-within — must reach the frame">
+          <div className="box spec-states">
+            <button type="button">hover or press me</button>
+            <input defaultValue="focus me" />
+          </div>
+        </Figure>
+
         <Figure id="form" label="live form state — projected as attributes">
           <div className="box" style={{ padding: 8, height: 134 }}>
             <input defaultValue="typed" style={{ width: '90%' }} />
@@ -316,7 +364,9 @@ function Report({ handle }: { handle: MountedRoundTrip | null }) {
           ? `blocked images   ${rep.blockedImages}
 missing fonts    ${rep.missingFonts}
 closed roots     ${rep.closedShadowRoots}
-iframes          ${rep.iframes}`
+iframes          ${rep.iframes}
+broken refs      ${rep.brokenReferences}
+ancestor bg img  ${rep.ancestorBackgroundImages}`
           : 'no frame captured yet'}
       </pre>
       <button onClick={read}>re-read</button>
@@ -364,7 +414,7 @@ function Hostile() {
 
   return (
     <>
-      <div ref={hostRef}>
+      <div ref={hostRef} className="hostile-host">
         <Specimens />
       </div>
       <Report handle={handle} />
