@@ -36,15 +36,40 @@ export function shouldDropForBackpressure(queueSize: number, max = MAX_ENCODE_QU
   return queueSize >= max
 }
 
+const clampScale = (scale: number) => (scale <= 0 || scale > 1 ? 1 : scale)
+
 /** Encode dimensions for a display size, honouring encodeScale. Both must be even for 4:2:0. */
 export function encodeSize(
   width: number,
   height: number,
   scale: number,
 ): { width: number; height: number } {
-  const s = scale <= 0 || scale > 1 ? 1 : scale
+  const s = clampScale(scale)
   const even = (n: number) => Math.max(2, Math.round((n * s) / 2) * 2)
   return { width: even(width), height: even(height) }
+}
+
+/**
+ * The part of the encode frame the content actually occupies: the display size at encodeScale,
+ * NOT rounded to even, and never larger than the frame.
+ *
+ * The encoder needs even dimensions and the page does not have them, so an odd display size
+ * leaves a pad row (or column) past the content. Backlog #75: the canvas used to take the full
+ * encode size as its backing store and stretch it over the odd CSS box, so the pad landed on
+ * the last CSS pixel as a dark 1px line — the page's ground, or black before that was carried
+ * (kcuf measured 1200x842 backing in an 841px box, last row [0,3,37]). Capture renders into
+ * this rect and repeats its edge into the pad; the canvas takes this size and draws only this
+ * rect, so the pad is encoded but never shown.
+ */
+export function contentSize(
+  width: number,
+  height: number,
+  scale: number,
+): { width: number; height: number } {
+  const s = clampScale(scale)
+  const enc = encodeSize(width, height, scale)
+  const fit = (n: number, max: number) => Math.min(max, Math.max(1, Math.round(n * s)))
+  return { width: fit(width, enc.width), height: fit(height, enc.height) }
 }
 
 /**

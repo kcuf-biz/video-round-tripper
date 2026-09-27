@@ -30,6 +30,13 @@ export interface ForeignObjectOptions {
   /** Encode dimensions. Defaults to the element's layout size. */
   width?: number
   height?: number
+  /**
+   * The rect inside the encode frame the content is scaled into, from the top-left. Defaults
+   * to the whole frame. Smaller than the frame when the encoder's even dimensions overshoot an
+   * odd display size, or under encodeScale — see contentSize() in frameBudget.ts.
+   */
+  contentWidth?: number
+  contentHeight?: number
   cache?: ResourceCache
   /** Called when a frame fails to rasterize, rather than throwing into the render loop. */
   onError?: (err: Error) => void
@@ -69,6 +76,8 @@ export function createForeignObjectSource(
     if (disposed) throw new Error('capture source disposed')
     const w = opts.width ?? element.offsetWidth
     const h = opts.height ?? element.offsetHeight
+    const cw = Math.min(w, opts.contentWidth ?? w)
+    const ch = Math.min(h, opts.contentHeight ?? h)
     if (w === 0 || h === 0) throw new Error('capture target has zero size')
 
     const css = await cache.css()
@@ -86,8 +95,10 @@ export function createForeignObjectSource(
      * clone's job is to look like the element does, not like the encoder's frame.
      */
     clone.style.boxSizing = 'border-box'
-    clone.style.width = `${element.offsetWidth || w}px`
-    clone.style.height = `${element.offsetHeight || h}px`
+    const liveW = element.offsetWidth || cw
+    const liveH = element.offsetHeight || ch
+    clone.style.width = `${liveW}px`
+    clone.style.height = `${liveH}px`
     /*
      * An OVERLAY scrollbar (macOS, iOS, most phones) is invisible at rest in the live page but
      * the clone is a fresh scroller that paints its thumb every frame: a grey sliver pinned to
@@ -105,7 +116,15 @@ export function createForeignObjectSource(
 
     const xml = new XMLSerializer().serializeToString(clone)
     const svg =
-      `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" style="${attr(prepared.context.rootStyle)}">` +
+      /*
+       * Sized to the CONTENT RECT and viewBoxed to the element's live box, so the page is scaled
+       * into it. There was no viewBox before, which made encodeScale a crop: at 0.5 the frame
+       * held the top-left quarter of the page at 1:1 and the canvas stretched that over the
+       * whole stage (measured: a half-red, half-blue box captured solid red). At scale 1 the two
+       * sizes are equal and nothing is resampled.
+       */
+      `<svg xmlns="http://www.w3.org/2000/svg" width="${cw}" height="${ch}" ` +
+      `viewBox="0 0 ${liveW} ${liveH}" preserveAspectRatio="none" style="${attr(prepared.context.rootStyle)}">` +
       // extraCss last so a flattened shadow tree's rules win over anything the page declared
       // for the same host element — which is what the shadow boundary does in the live DOM.
       `<defs><style type="text/css"><![CDATA[${escapeCdata(`${css}\n${prepared.extraCss}`)}]]></style></defs>` +
@@ -139,7 +158,14 @@ export function createForeignObjectSource(
     // paints no background. The scratch canvas is opaque and would otherwise show black.
     ctx!.fillStyle = prepared.context.ground || '#fff'
     ctx!.fillRect(0, 0, w, h)
-    ctx!.drawImage(img, 0, 0, w, h)
+    ctx!.drawImage(img, 0, 0, cw, ch)
+    /*
+     * The pad past the content rect (#75) repeats the content's edge rather than showing the
+     * ground. The canvas never draws it, but the encoder codes it in the same blocks as the
+     * last visible row, and a colour step there bleeds ringing back into the picture.
+     */
+    if (ch < h) ctx!.drawImage(scratch, 0, ch - 1, cw, 1, 0, ch, cw, h - ch)
+    if (cw < w) ctx!.drawImage(scratch, cw - 1, 0, 1, h, cw, 0, w - cw, h)
     return new VideoFrame(scratch, { timestamp })
   }
 

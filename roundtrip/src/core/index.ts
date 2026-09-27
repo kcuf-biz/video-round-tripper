@@ -46,4 +46,4 @@ export {
 // The pure bits, exported because they are useful to test against and to reason about.
 export { quantizerFor, encodeOptionsFor, familyOf } from '../quantizer.ts'
 export { createMoshFilter, type MoshFilter } from '../mosh.ts'
-export { encodeSize, createPacer } from '../frameBudget.ts'
+export { contentSize, encodeSize, createPacer } from '../frameBudget.ts'

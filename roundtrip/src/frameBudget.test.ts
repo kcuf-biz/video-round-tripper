@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { createPacer, encodeSize, isAwake, shouldDropForBackpressure } from './frameBudget.ts'
+import { contentSize, createPacer, encodeSize, isAwake, shouldDropForBackpressure } from './frameBudget.ts'
 
 describe('encodeSize', () => {
   it('always returns even dimensions (4:2:0 chroma subsampling requires it)', () => {
@@ -15,6 +15,32 @@ describe('encodeSize', () => {
   it('treats an out-of-range scale as 1 rather than producing a zero-size encoder', () => {
     expect(encodeSize(800, 600, 0)).toEqual({ width: 800, height: 600 })
     expect(encodeSize(800, 600, 4)).toEqual({ width: 800, height: 600 })
+  })
+})
+
+describe('contentSize', () => {
+  it('is the unrounded display size, so an odd height leaves the pad row outside it (#75)', () => {
+    expect(encodeSize(1200, 841, 1)).toEqual({ width: 1200, height: 842 })
+    expect(contentSize(1200, 841, 1)).toEqual({ width: 1200, height: 841 })
+    expect(contentSize(401, 301, 1)).toEqual({ width: 401, height: 301 })
+  })
+
+  it('never exceeds the encode frame, even when rounding to even went DOWN', () => {
+    for (const scale of [1, 0.9, 0.73, 0.5, 0.31, 0.1]) {
+      for (const [w, h] of [[1381, 907], [841, 1200], [3, 3], [1, 1]] as const) {
+        const enc = encodeSize(w, h, scale)
+        const c = contentSize(w, h, scale)
+        expect(c.width).toBeLessThanOrEqual(enc.width)
+        expect(c.height).toBeLessThanOrEqual(enc.height)
+        expect(enc.width - c.width).toBeLessThanOrEqual(1)
+        expect(enc.height - c.height).toBeLessThanOrEqual(1)
+      }
+    }
+  })
+
+  it('equals the encode size when the display size is already even', () => {
+    expect(contentSize(800, 600, 1)).toEqual(encodeSize(800, 600, 1))
+    expect(contentSize(800, 600, 0.5)).toEqual({ width: 400, height: 300 })
   })
 })
 

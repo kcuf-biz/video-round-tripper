@@ -2,7 +2,7 @@ import type { CaptureReport, CaptureSource, CodecChoice, CodecFamily, MoshConfig
 import { createForeignObjectSource } from '../capture/foreignObjectSource.ts'
 import { probeCodec } from '../codec/probe.ts'
 import { createPipeline, type Pipeline } from '../codec/pipeline.ts'
-import { createPacer, encodeSize, isAwake, WAKE_MS } from '../frameBudget.ts'
+import { contentSize, createPacer, encodeSize, isAwake, WAKE_MS } from '../frameBudget.ts'
 import { resolveDials, type CodecDials } from '../codecs.ts'
 import { ensureStyles } from './styles.ts'
 
@@ -146,7 +146,7 @@ export function createRoundTrip(opts: RoundTripCoreOptions): RoundTripController
     if (!disposed) onStatus?.(status, message)
   }
 
-  function start(enc: { width: number; height: number }): void {
+  function start(enc: { width: number; height: number }, view: { width: number; height: number }): void {
     if (typeof VideoEncoder === 'undefined') {
       setStatus('unsupported', 'WebCodecs VideoEncoder is not available in this browser.')
       return
@@ -155,8 +155,14 @@ export function createRoundTrip(opts: RoundTripCoreOptions): RoundTripController
     // Resizing the canvas clears it, so a rebuild is back to "nothing painted": show the live
     // content until this build's first frame rather than a blank overlay.
     setStatus('idle', '')
-    canvas.width = enc.width
-    canvas.height = enc.height
+    /*
+     * The canvas backing store is the CONTENT rect, not the encode frame, and only that rect of
+     * each decoded frame is drawn. Backlog #75: at the encode size an odd display height put
+     * the encoder's pad row on the canvas's last CSS pixel — 842 rows stretched into an 841px
+     * box, a dark line along the bottom (on iOS, just above the toolbar).
+     */
+    canvas.width = view.width
+    canvas.height = view.height
     const ctx = canvas.getContext('2d', { alpha: false })
 
     let cancelled = false
@@ -212,7 +218,7 @@ export function createRoundTrip(opts: RoundTripCoreOptions): RoundTripController
         onPicture: (frame) => {
           try {
             if (!cancelled) {
-              ctx?.drawImage(frame, 0, 0, canvas.width, canvas.height)
+              ctx?.drawImage(frame, 0, 0, view.width, view.height, 0, 0, canvas.width, canvas.height)
               if (!painted) {
                 painted = true
                 setStatus('running', runningMessage)
@@ -225,7 +231,13 @@ export function createRoundTrip(opts: RoundTripCoreOptions): RoundTripController
         onError: fail,
       })
       source =
-        externalSource ?? createForeignObjectSource(content, { width: enc.width, height: enc.height })
+        externalSource ??
+        createForeignObjectSource(content, {
+          width: enc.width,
+          height: enc.height,
+          contentWidth: view.width,
+          contentHeight: view.height,
+        })
       /*
        * NOT 'running' yet. The canvas is shown from 'running' on, and until the first decoded
        * frame is drawn it holds nothing — so flipping here put a black overlay over the page
@@ -316,7 +328,7 @@ export function createRoundTrip(opts: RoundTripCoreOptions): RoundTripController
     if (sameSize(size, w, h)) return
     size = { w, h }
     stop()
-    start(encodeSize(w, h, encodeScale))
+    start(encodeSize(w, h, encodeScale), contentSize(w, h, encodeScale))
   }
   const ro = new ResizeObserver(() => {
     window.clearTimeout(debounce)
