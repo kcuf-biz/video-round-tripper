@@ -36,6 +36,12 @@ describe('resolveCssUrl', () => {
     expect(resolveCssUrl('blob:https://x/y', SHEET)).toBeNull()
     expect(resolveCssUrl('', SHEET)).toBeNull()
   })
+
+  it('never resolves a fragment-only reference, which points INTO the document (#63)', () => {
+    // Resolved, url(#g) became https://cdn.example.com/a/b/site.css#g -- a url into another
+    // document -- and SVG paints a failed paint server as `none`, silently.
+    expect(resolveCssUrl('#mark-row', SHEET)).toBeNull()
+  })
 })
 
 describe('rewriteCssUrls', () => {
@@ -60,6 +66,12 @@ describe('rewriteCssUrls', () => {
   it('leaves data: URIs alone rather than round-tripping them through a fetch', () => {
     const css = 'background:url(data:image/gif;base64,R0lGOD)'
     expect(rewriteCssUrls(css, SHEET, () => 'data:nope')).toBe(css)
+  })
+
+  it('leaves every fragment reference byte-identical: paint servers, masks, filters, clip-paths', () => {
+    const css = `.k{fill:url(#mark-row);mask:url('#m');filter:url("#f");clip-path:url( #c )}`
+    expect(rewriteCssUrls(css, SHEET, () => 'data:nope')).toBe(css)
+    expect(collectCssUrls(css, SHEET)).toEqual([])
   })
 
   it('escapes quotes and backslashes it puts back into the sheet', () => {

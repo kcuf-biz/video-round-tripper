@@ -22,8 +22,18 @@ import type { ResourceCache } from './inlineResources.ts'
 
 /* ------------------------------------------------------------------ pure string transforms */
 
-/** Schemes that already carry their own bytes, or that can never be fetched. */
-const SELF_CONTAINED = /^(?:data|blob|about|javascript):/i
+/**
+ * Targets that already carry their own bytes, can never be fetched — or, for a bare `#id`,
+ * point INTO the document rather than out of it.
+ *
+ * The fragment case is not like the others and was found by use (backlog #63): `fill:
+ * url(#mark-row)` is how CSS reaches every SVG paint server, mask, filter and clip-path, and
+ * resolving it made it `http://host/#mark-row` — a url into a different document, which the
+ * SVG image cannot load. SVG treats a failed paint as `none`, so kcuf's wordmark captured at 0%
+ * ink with no error. Left as authored, the fragment resolves against the image document, which
+ * is exactly where the cloned <linearGradient> now lives.
+ */
+const SELF_CONTAINED = /^(?:#|(?:data|blob|about|javascript):)/i
 
 /**
  * One `url(...)` token: double-quoted, single-quoted, or bare. The inner alternations allow a
