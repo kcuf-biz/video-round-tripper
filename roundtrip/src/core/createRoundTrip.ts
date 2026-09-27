@@ -152,11 +152,16 @@ export function createRoundTrip(opts: RoundTripCoreOptions): RoundTripController
       return
     }
 
+    // Resizing the canvas clears it, so a rebuild is back to "nothing painted": show the live
+    // content until this build's first frame rather than a blank overlay.
+    setStatus('idle', '')
     canvas.width = enc.width
     canvas.height = enc.height
     const ctx = canvas.getContext('2d', { alpha: false })
 
     let cancelled = false
+    let painted = false
+    let runningMessage = ''
     let raf = 0
     let inFlight = false
     let detachWake: (() => void) | undefined
@@ -206,7 +211,13 @@ export function createRoundTrip(opts: RoundTripCoreOptions): RoundTripController
         mosh: resolved.mosh,
         onPicture: (frame) => {
           try {
-            if (!cancelled) ctx?.drawImage(frame, 0, 0, canvas.width, canvas.height)
+            if (!cancelled) {
+              ctx?.drawImage(frame, 0, 0, canvas.width, canvas.height)
+              if (!painted) {
+                painted = true
+                setStatus('running', runningMessage)
+              }
+            }
           } finally {
             frame.close() // decoder output is ours to release; leaking here stalls everything
           }
@@ -215,7 +226,14 @@ export function createRoundTrip(opts: RoundTripCoreOptions): RoundTripController
       })
       source =
         externalSource ?? createForeignObjectSource(content, { width: enc.width, height: enc.height })
-      setStatus('running', `${choice.codec} · ${choice.hardwareAcceleration} · ${choice.bitrateMode}`)
+      /*
+       * NOT 'running' yet. The canvas is shown from 'running' on, and until the first decoded
+       * frame is drawn it holds nothing — so flipping here put a black overlay over the page
+       * for as long as the first capture took, and (backlog #62) a black canvas reading
+       * 'running' sent whoever was debugging a capture that could never decode off towards the
+       * codec. onPicture flips it on the first real paint.
+       */
+      runningMessage = `${choice.codec} · ${choice.hardwareAcceleration} · ${choice.bitrateMode}`
 
       const pacer = createPacer()
 

@@ -26,6 +26,7 @@ import type { ElementPair } from './pairs.ts'
 import type { ResourceCache } from './inlineResources.ts'
 import type { CaptureReport } from './report.ts'
 import { inlineCssUrls } from './cssResources.ts'
+import { rewriteStateRules } from './interactionState.ts'
 
 /* ------------------------------------------------------------------ pure selector rewriting */
 
@@ -176,6 +177,8 @@ function shadowCss(root: ShadowRoot, host: string): string {
     }
   }
 
+  // :host(:hover) and friends need the same treatment as the page's own sheets.
+  raw = rewriteStateRules(raw)
   ROOT_CSS.set(root, raw)
   return raw
 }

@@ -12,5 +12,12 @@ import type { CaptureReport } from '../types.ts'
 export type { CaptureReport }
 
 export function emptyReport(): CaptureReport {
-  return { blockedImages: 0, missingFonts: 0, closedShadowRoots: 0, iframes: 0 }
+  return {
+    blockedImages: 0,
+    missingFonts: 0,
+    closedShadowRoots: 0,
+    iframes: 0,
+    brokenReferences: 0,
+    ancestorBackgroundImages: 0,
+  }
 }

@@ -34,13 +34,28 @@ import { collectCssUrls, isFontUrl, rewriteCssUrls } from './cssResources.ts'
 /** Mid-grey: reads as a dropout, and costs the encoder almost nothing. */
 const BLOCKED_FILL = '#8a8a8a'
 
-function placeholderFor(doc: Document, box: DOMRect): HTMLElement {
-  const el = doc.createElement('div')
+function placeholderFor(pair: ElementPair, box: DOMRect): HTMLElement {
+  const { src, dst } = pair
+  const el = dst.ownerDocument.createElement('div')
   el.setAttribute('data-rt-blocked', '')
-  // inline-block so a replaced <img> inside a line of text does not force a break.
+  /*
+   * The SOURCE's display, not a fixed one. This used to be inline-block always — right for an
+   * <img> inside a line of text, wrong for the usual `img { display: block }`: an inline-block
+   * sits on the baseline and gains the strut's descent below it, so every figure holding a
+   * blocked image grew by a few px and pushed everything under it down. Measured on /hostile/:
+   * the whole grid below row one captured 6px low. An inline source still becomes
+   * inline-block, since a <div> that is `inline` would ignore its width and height.
+   *
+   * The clone's inline style goes first so positioning's anchoring survives the swap, exactly
+   * as imageFrom() keeps it; the box and fill after it win.
+   */
+  const cs = getComputedStyle(src)
+  const display = cs.display === 'inline' ? 'inline-block' : cs.display
+  const prior = dst.getAttribute('style')
   el.setAttribute(
     'style',
-    `display:inline-block;width:${box.width}px;height:${box.height}px;background:${BLOCKED_FILL}`,
+    `${prior ? prior.replace(/;?\s*$/, ';') : ''}display:${display};vertical-align:${cs.verticalAlign};` +
+      `box-sizing:border-box;width:${box.width}px;height:${box.height}px;background:${BLOCKED_FILL}`,
   )
   return el
 }
@@ -90,7 +105,6 @@ function snapshot(doc: Document, draw: (ctx: CanvasRenderingContext2D) => void, 
 async function handleImg(pair: ElementPair, cache: ResourceCache, report: CaptureReport): Promise<void> {
   const src = pair.src as HTMLImageElement
   const dst = pair.dst as HTMLImageElement
-  const doc = dst.ownerDocument
 
   /*
    * srcset/sizes cannot come along: the SVG document has a different viewport and would
@@ -114,7 +128,7 @@ async function handleImg(pair: ElementPair, cache: ResourceCache, report: Captur
     return
   }
   report.blockedImages++
-  dst.replaceWith(placeholderFor(doc, src.getBoundingClientRect()))
+  dst.replaceWith(placeholderFor(pair, src.getBoundingClientRect()))
 }
 
 async function handleSvgImage(pair: ElementPair, cache: ResourceCache, report: CaptureReport): Promise<void> {
@@ -156,7 +170,7 @@ function handleCanvas(pair: ElementPair, report: CaptureReport): void {
 
   if (data === null) {
     report.blockedImages++
-    dst.replaceWith(placeholderFor(doc, box))
+    dst.replaceWith(placeholderFor(pair, box))
     return
   }
   dst.replaceWith(imageFrom(doc, dst, data, box))
@@ -176,7 +190,7 @@ function handleVideo(pair: ElementPair, report: CaptureReport): void {
   if (data === null) {
     // Not loaded yet, or cross-origin without CORS — drawImage succeeds and toDataURL throws.
     report.blockedImages++
-    dst.replaceWith(placeholderFor(doc, box))
+    dst.replaceWith(placeholderFor(pair, box))
     return
   }
   dst.replaceWith(imageFrom(doc, dst, data, box))
@@ -243,7 +257,7 @@ export async function replaceUnserializable(
       // An iframe inside foreignObject renders blank no matter what; a cross-origin one we
       // could not read even in principle. Out of scope by decision, placeholdered and counted.
       report.iframes++
-      dst.replaceWith(placeholderFor(dst.ownerDocument, src.getBoundingClientRect()))
+      dst.replaceWith(placeholderFor(pair, src.getBoundingClientRect()))
     }
   }
   await Promise.all(jobs)

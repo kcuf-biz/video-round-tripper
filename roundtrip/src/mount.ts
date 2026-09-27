@@ -67,27 +67,14 @@ export function mountRoundTrip(target: HTMLElement, opts: MountOptions = {}): Mo
   }
 
   /*
-   * THE PAGE'S GROUND HAS TO BE CARRIED ONTO .rt-content, or a page mounted on <body>
-   * round-trips as black.
-   *
-   * html and body are special: their background paints the VIEWPORT canvas, not their own box,
-   * and a `body { background: #eee }` rule matches nothing at all once the content is cloned
-   * into an SVG where there is no body. Measured through the IIFE on example.com — dark text
-   * on an implicit white ground came back as dark text on black, i.e. an empty frame, with no
-   * error anywhere. Capture cannot infer this: the colour is real and is simply not in the
-   * subtree being captured.
-   *
-   * Only for the body/html case, and only the resolved colour: anything else is the caller's
-   * own element and already paints its own background.
+   * The page's ground — html/body's background, which paints the viewport rather than their own
+   * box — is NOT copied onto .rt-content here any more. It used to be, colour only, because a
+   * body mount round-tripped as black (measured on example.com: dark text on an implicit white
+   * ground came back as dark text on black). Capture now carries the whole background, image
+   * and gradient included, for any mount, React or vanilla: see capture/context.ts. Painting
+   * the colour on the live .rt-content as well would have covered body's background-image in
+   * the LIVE page too, which is what the reduced-motion bypass shows.
    */
-  if (target === doc.body || target === doc.documentElement) {
-    const view = doc.defaultView
-    const opaque = (c: string) => !!c && c !== 'transparent' && !/^rgba\(0, 0, 0, 0\)$/.test(c)
-    const htmlBg = view ? view.getComputedStyle(doc.documentElement).backgroundColor : ''
-    const bodyBg = view && doc.body ? view.getComputedStyle(doc.body).backgroundColor : ''
-    const ground = opaque(htmlBg) ? htmlBg : opaque(bodyBg) ? bodyBg : ''
-    if (ground) content.style.backgroundColor = ground
-  }
 
   // Remember where the children came from so unmount() can put them back in order.
   const moved = Array.from(target.childNodes)

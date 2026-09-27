@@ -30,6 +30,18 @@ export interface CaptureReport {
   closedShadowRoots: number
   /** <iframe>s, which render blank inside foreignObject and are always placeholdered. */
   iframes: number
+  /**
+   * `url(#id)` / `href="#id"` references (gradients, patterns, masks, filters, clip-paths,
+   * <use>) whose target is outside the captured subtree. SVG paints a missing paint server as
+   * `none`, so each one is an element that silently vanished from the frame.
+   */
+  brokenReferences: number
+  /**
+   * Background images on an ancestor of the captured element (other than html/body, which are
+   * carried whole). Its colour is carried; the image would be positioned against a box the
+   * clone does not have, so it is left out and counted here.
+   */
+  ancestorBackgroundImages: number
 }
 
 /** A frame source. Implementations own their frames until handed over; the consumer closes them. */

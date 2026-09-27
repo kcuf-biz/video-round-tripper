@@ -1,5 +1,6 @@
 import type { CaptureReport, CaptureSource } from '../types.ts'
 import { createResourceCache, prepareClone, type ResourceCache } from './inlineResources.ts'
+import { escapeCdata, explainUndecodable, makeWellFormed } from './wellFormed.ts'
 
 /**
  * The default capture path: serialize the live element into an SVG <foreignObject>, load it
@@ -33,6 +34,14 @@ export interface ForeignObjectOptions {
   /** Called when a frame fails to rasterize, rather than throwing into the render loop. */
   onError?: (err: Error) => void
 }
+
+const borderX = (el: HTMLElement) => {
+  const cs = getComputedStyle(el)
+  return (parseFloat(cs.borderLeftWidth) || 0) + (parseFloat(cs.borderRightWidth) || 0)
+}
+
+/** Escape for a double-quoted XML attribute. Computed font-family values carry quotes. */
+const attr = (s: string) => s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;')
 
 export function createForeignObjectSource(
   element: HTMLElement,
@@ -79,29 +88,57 @@ export function createForeignObjectSource(
     clone.style.boxSizing = 'border-box'
     clone.style.width = `${element.offsetWidth || w}px`
     clone.style.height = `${element.offsetHeight || h}px`
+    /*
+     * An OVERLAY scrollbar (macOS, iOS, most phones) is invisible at rest in the live page but
+     * the clone is a fresh scroller that paints its thumb every frame: a grey sliver pinned to
+     * the frame's right edge that nobody sees on the page itself. Measured on the marketing page,
+     * where it read as a light or a dark bar depending on what the scroller's own background
+     * happened to be. Only when the live scrollbar takes no space: a classic scrollbar is really
+     * there, and hiding it in the clone would also hand its width back to the layout.
+     */
+    if (element.offsetWidth === element.clientWidth + borderX(element)) clone.style.scrollbarWidth = 'none'
     const prepared = await prepareClone(element, clone, cache)
     last = prepared.report
+    // After every pass, so what shadow flattening moved in is covered too. See wellFormed.ts:
+    // one stray `<!-- -- -->` or Alpine `@click` otherwise loses the WHOLE frame, not a node.
+    makeWellFormed(clone)
 
     const xml = new XMLSerializer().serializeToString(clone)
     const svg =
-      `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}">` +
+      `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" style="${attr(prepared.context.rootStyle)}">` +
       // extraCss last so a flattened shadow tree's rules win over anything the page declared
       // for the same host element — which is what the shadow boundary does in the live DOM.
-      `<defs><style type="text/css"><![CDATA[${css}\n${prepared.extraCss}]]></style></defs>` +
+      `<defs><style type="text/css"><![CDATA[${escapeCdata(`${css}\n${prepared.extraCss}`)}]]></style></defs>` +
       `<foreignObject width="100%" height="100%">` +
-      `<div xmlns="http://www.w3.org/1999/xhtml">${xml}</div>` +
+      // The wrapper stands in for the clone's real parent — inherited type, ground. context.ts.
+      `<div xmlns="http://www.w3.org/1999/xhtml" style="${attr(prepared.context.wrapperStyle)}">${xml}</div>` +
       `</foreignObject></svg>`
 
     // data:, not blob: — see the header comment. This is load-bearing, not stylistic.
     const url = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg)
     const img = new Image()
     img.src = url
-    await img.decode()
+    try {
+      await img.decode()
+    } catch (e) {
+      /*
+       * "The source image cannot be decoded." is all the browser says, whatever the cause. If
+       * it was the markup, ask an XML parser where — see wellFormed.ts. Anything else (memory,
+       * a genuinely broken resource) keeps the original error.
+       */
+      const why = explainUndecodable(svg)
+      if (why) throw new Error(`Capture produced markup the SVG image cannot parse: ${why}`)
+      throw e
+    }
 
     if (scratch.width !== w || scratch.height !== h) {
       scratch.width = w
       scratch.height = h
     }
+    // Under everything, the page's own Canvas colour: what a browser shows through a page that
+    // paints no background. The scratch canvas is opaque and would otherwise show black.
+    ctx!.fillStyle = prepared.context.ground || '#fff'
+    ctx!.fillRect(0, 0, w, h)
     ctx!.drawImage(img, 0, 0, w, h)
     return new VideoFrame(scratch, { timestamp })
   }

@@ -25,7 +25,9 @@ import {
   indexAnimationsByTarget,
   snapshotInheritedCustomProperties,
 } from './animations.ts'
+import { countBrokenReferences, snapshotAncestorContext, type AncestorContext } from './context.ts'
 import { collectCss, bytesToBase64, mimeFor } from './cssResources.ts'
+import { rewriteStateRules, STATE_BASE_CSS, syncInteractionState } from './interactionState.ts'
 import { pairDescendants, pairElements, type ElementPair } from './pairs.ts'
 import { replaceUnserializable } from './replaceUnserializable.ts'
 import { emptyReport, type CaptureReport } from './report.ts'
@@ -98,7 +100,9 @@ export function createResourceCache(doc: Document = document): ResourceCache {
 
   const cache: ResourceCache = {
     css() {
-      if (!pending) pending = collectCss(doc, cache)
+      // State selectors are rewritten ONCE, here, with the blob: the rewrite is text-only and
+      // the per-frame half is just stamping attributes. See interactionState.ts.
+      if (!pending) pending = collectCss(doc, cache).then((css) => STATE_BASE_CSS + rewriteStateRules(css))
       return pending
     },
 
@@ -220,7 +224,8 @@ export function syncFormState(pairs: readonly ElementPair[]): void {
  * Every capture pass, over one source/clone pair, in the only order that works.
  *
  * ORDER IS LOAD-BEARING:
- *  1. form state   — attributes only, no structural change.
+ *  1. form state   — attributes only, no structural change. Interaction state (:hover,
+ *                    :focus...) rides along: also attributes only.
  *  2. animations   — pins animated properties as inline values. BEFORE positioning, because
  *                    positioning writes a COMPOSED `translate(scroll) <computed transform>`
  *                    and this pass writes the bare animated transform: freezing second would
@@ -237,6 +242,8 @@ export function syncFormState(pairs: readonly ElementPair[]): void {
 export interface PreparedClone {
   /** CSS the passes generated (flattened shadow styles), to append after the cached sheet. */
   extraCss: string
+  /** What the clone inherited from above itself: see context.ts. */
+  context: AncestorContext
   /** What this capture could not reproduce. */
   report: CaptureReport
 }
@@ -258,6 +265,7 @@ export async function prepareClone(
   /** The four index-matched passes, plus shadow flattening, over one paired subtree. */
   const runPasses = async (pairs: ElementPair[]): Promise<string> => {
     syncFormState(pairs)
+    syncInteractionState(pairs)
     freezeAnimations(pairs, animations)
     syncScrollState(source, pairs)
     await replaceUnserializable(pairs, cache, report)
@@ -272,9 +280,15 @@ export async function prepareClone(
    */
   snapshotInheritedCustomProperties(source, clone)
 
-  const extraCss = await runPasses(pairElements(source, clone))
+  const context = await snapshotAncestorContext(source, cache, report)
+
+  const pairs = pairElements(source, clone)
+  const extraCss = await runPasses(pairs)
+
+  // After the passes, against the clone as it will be serialized.
+  report.brokenReferences = countBrokenReferences(pairs, clone)
 
   report.missingFonts = cache.stats.missingFonts
   report.blockedImages += cache.stats.blockedImages
-  return { extraCss, report }
+  return { extraCss, context, report }
 }
