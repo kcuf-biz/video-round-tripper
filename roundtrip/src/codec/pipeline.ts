@@ -1,5 +1,5 @@
 import type { CodecChoice, MoshConfig } from '../types.ts'
-import { encodeOptionsFor, quantizerFor } from '../quantizer.ts'
+import { bitrateFor, encodeOptionsFor, quantizerFor, RATE_CONTROL } from '../quantizer.ts'
 import { createMoshFilter, sameMoshConfig } from '../mosh.ts'
 import { shouldDropForBackpressure } from '../frameBudget.ts'
 
@@ -144,8 +144,29 @@ export function createPipeline(opts: PipelineOptions): Pipeline {
     hardwareAcceleration: opts.hardwareAcceleration,
     bitrateMode: opts.bitrateMode,
   }
-  if (opts.bitrateMode !== 'quantizer') cfg.bitrate = opts.bitrate ?? 200_000
+  /*
+   * COARSENESS AS A BITRATE (#72). When the family's dial is a starved constant bitrate and the
+   * probe actually got that mode, coarseness sets the bitrate — unless the caller pinned one.
+   * Changing it means reconfiguring the encoder, which forces a keyframe, so tune() only marks
+   * it and push() applies it at most every RETARGET_MS: a dragged slider would otherwise emit a
+   * keyframe per pixel of travel.
+   */
+  const bitrateDial = opts.bitrateMode === 'constant' && RATE_CONTROL[opts.family] === 'constant' && opts.bitrate === undefined
+  const targetBitrate = () => bitrateFor(coarseness, opts.width, opts.height)
+  if (opts.bitrateMode !== 'quantizer') cfg.bitrate = bitrateDial ? targetBitrate() : (opts.bitrate ?? 200_000)
   encoder.configure(cfg)
+  const RETARGET_MS = 250
+  let lastRetarget = 0
+
+  function retarget(): void {
+    if (!bitrateDial) return
+    const want = targetBitrate()
+    const now = performance.now()
+    if (want === cfg.bitrate || now - lastRetarget < RETARGET_MS) return
+    cfg.bitrate = want
+    lastRetarget = now
+    encoder.configure(cfg)
+  }
 
   function wantsKeyframe(i: number): boolean {
     if (i === 0) return true
@@ -167,6 +188,7 @@ export function createPipeline(opts: PipelineOptions): Pipeline {
           stats.dropped++
           return
         }
+        retarget()
         const q = rawQuantizer ?? quantizerFor(opts.family, coarseness)
         const keyFrame = needKeyframe || wantsKeyframe(inputIndex)
         const encOpts: VideoEncoderEncodeOptions =

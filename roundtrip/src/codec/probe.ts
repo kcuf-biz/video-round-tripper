@@ -1,5 +1,5 @@
 import type { CodecChoice, CodecFamily } from '../types.ts'
-import { familyOf } from '../quantizer.ts'
+import { familyOf, RATE_CONTROL } from '../quantizer.ts'
 import { CODEC_PREFERENCE, codecStringsFor, isCodecFamily } from '../codecs.ts'
 
 /**
@@ -55,6 +55,11 @@ function candidatesFor(opts: ProbeOptions): string[] {
   )
 }
 
+/** A family's modes in order of preference: its RATE_CONTROL first, then the other two. */
+export function modesFor(family: CodecFamily): Array<CodecChoice['bitrateMode']> {
+  return RATE_CONTROL[family] === 'constant' ? ['constant', 'quantizer', 'variable'] : ['quantizer', 'constant', 'variable']
+}
+
 /**
  * Find the best supported (codec, acceleration, bitrateMode) triple.
  * Quantizer mode is strongly preferred — it is the primary artifact dial and its values are
@@ -67,10 +72,16 @@ export async function probeCodec(opts: ProbeOptions): Promise<CodecChoice | null
     ((cfg) => VideoEncoder.isConfigSupported(cfg) as Promise<{ supported?: boolean }>)
 
   const codecs = candidatesFor(opts)
-  const modes: Array<CodecChoice['bitrateMode']> = ['quantizer', 'constant', 'variable']
 
-  for (const bitrateMode of modes) {
+  /*
+   * Rank r means "each codec's r-th choice of mode", so codec preference still decides between
+   * families at the same rank — AVC-in-quantizer still beats AV1 in anything. What changed
+   * (#72) is that AV1 and VP9 rank CONSTANT first: Chrome's quantizer mode cannot make them
+   * heavy, a starved bitrate can. See RATE_CONTROL in quantizer.ts.
+   */
+  for (let rank = 0; rank < 3; rank++) {
     for (const codec of codecs) {
+      const bitrateMode = modesFor(familyOf(codec))[rank]!
       for (const hardwareAcceleration of ACCEL) {
         const cfg: VideoEncoderConfig = {
           codec,

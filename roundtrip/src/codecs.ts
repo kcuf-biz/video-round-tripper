@@ -134,8 +134,14 @@ export interface CodecDials {
 export const CODEC_DEFAULTS: Record<CodecFamily, CodecDials> = {
   avc: { coarseness: 0.78, gop: 20, mosh: { dropKeyframesAfter: 0, keepEveryNthKeyframe: 3, seed: 1 } },
   hevc: { coarseness: 0.78, gop: 20, mosh: { dropKeyframesAfter: 0, keepEveryNthKeyframe: 3, seed: 1 } },
-  av1: { coarseness: 0.78, gop: 'infinite', mosh: false },
-  vp9: { coarseness: 0.78, gop: 'infinite', mosh: false },
+  // GOP 3, not infinite, since coarseness became a starved bitrate (#72). A starved keyframe
+  // wrecks the whole frame; every delta after it spends its byte budget refining the decoder's
+  // picture toward the source, and on a static page nothing else competes for those bytes, so
+  // the page heals (measured on av1: error 11.2 at the key, back to 6.6 within ~7 frames).
+  // Without periodic keys only moving things ever look broken. GOP 20 read as a 1s pulse and
+  // GOP 6 still pulsed; GOP 3 is the author's call by eye for steady damage.
+  av1: { coarseness: 0.78, gop: 3, mosh: false },
+  vp9: { coarseness: 0.78, gop: 3, mosh: false },
 }
 
 /**

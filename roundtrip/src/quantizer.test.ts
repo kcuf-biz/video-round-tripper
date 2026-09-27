@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { encodeOptionsFor, familyOf, quantizerFor } from './quantizer.ts'
+import { bitrateFor, encodeOptionsFor, familyOf, quantizerFor } from './quantizer.ts'
 
 describe('familyOf', () => {
   it('maps codec strings to families', () => {
@@ -52,5 +52,25 @@ describe('encodeOptionsFor', () => {
   it('clamps to the codec range rather than passing an illegal value to the encoder', () => {
     expect(encodeOptionsFor('avc', 63)).toEqual({ avc: { quantizer: 51 } })
     expect(encodeOptionsFor('av1', -9)).toEqual({ av1: { quantizer: 0 } })
+  })
+})
+
+describe('bitrateFor', () => {
+  it('falls geometrically with coarseness and scales with area', () => {
+    const a = bitrateFor(0, 344, 360), b = bitrateFor(0.5, 344, 360), c = bitrateFor(1, 344, 360)
+    expect(a).toBeGreaterThan(b)
+    expect(b).toBeGreaterThan(c)
+    // Geometric: the midpoint is the geometric mean of the ends, not the arithmetic one.
+    expect(b).toBeCloseTo(Math.sqrt(a * c), -2)
+    expect(bitrateFor(0.5, 688, 720)).toBeCloseTo(4 * b, -3)
+  })
+
+  it('lands on the calibration point: ~20kbps at 344x360 and coarseness 0.78', () => {
+    expect(bitrateFor(0.78, 344, 360)).toBeGreaterThan(17_000)
+    expect(bitrateFor(0.78, 344, 360)).toBeLessThan(23_000)
+  })
+
+  it('never asks for less than an encoder will accept', () => {
+    expect(bitrateFor(1, 16, 16)).toBe(4_000)
   })
 })

@@ -69,6 +69,22 @@ describe('probeCodec', () => {
     )
   })
 
+  it('gives AV1 and VP9 a constant bitrate first, because their quantizer cannot get heavy (#72)', async () => {
+    for (const codec of ['av1', 'vp9']) {
+      const choice = await probeCodec({ ...base, codec, isConfigSupported: spikeMachine })
+      expect(choice!.bitrateMode).toBe('constant')
+    }
+    // ...while AVC, preferred, still wins the default sweep in quantizer mode.
+    const def = await probeCodec({ ...base, isConfigSupported: spikeMachine })
+    expect(def).toEqual(expect.objectContaining({ family: 'avc', bitrateMode: 'quantizer' }))
+  })
+
+  it('falls back to quantizer for AV1 when constant is refused', async () => {
+    const noCbr: ConfigSupportFn = async (cfg) => ({ supported: cfg.bitrateMode !== 'constant' && (await spikeMachine(cfg)).supported === true })
+    const choice = await probeCodec({ ...base, codec: 'av1', isConfigSupported: noCbr })
+    expect(choice!.bitrateMode).toBe('quantizer')
+  })
+
   it('expands a family name in the codec option', async () => {
     const choice = await probeCodec({ ...base, codec: 'av1', isConfigSupported: spikeMachine })
     expect(choice!.codec).toBe('av01.0.04M.08')

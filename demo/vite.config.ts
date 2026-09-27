@@ -29,6 +29,8 @@ export default defineConfig({
       input: {
         main: new URL('./index.html', import.meta.url).pathname,
         hostile: new URL('./hostile/index.html', import.meta.url).pathname,
+        // #72: all four codec families side by side at one coarseness, for fitting the floors.
+        compare: new URL('./compare/index.html', import.meta.url).pathname,
       },
     },
   },

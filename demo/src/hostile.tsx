@@ -62,7 +62,30 @@ class ClosedSpecimen extends HTMLElement {
   }
 }
 
+/**
+ * #74: an animation that lives INSIDE an open shadow root — keyframes declared in the shadow
+ * <style>, running on a shadow element. Wall-clock driven on purpose (no --seek), so the
+ * custom-property pass cannot move it by accident: only freezeAnimations reaching into the
+ * flattened shadow subtree can.
+ */
+class ShadowAnimSpecimen extends HTMLElement {
+  connectedCallback() {
+    if (this.shadowRoot) return
+    const root = this.attachShadow({ mode: 'open' })
+    root.innerHTML = `
+      <style>
+        :host { display: block; position: relative; height: 134px; background: #1d2c3a; overflow: hidden; }
+        .bar { position: absolute; left: 12px; top: 52px; width: 60px; height: 30px;
+               background: #ffd400; animation: slide 4s ease-in-out infinite alternate, hue 3s linear infinite; }
+        @keyframes slide { to { transform: translateX(150px) rotate(90deg); } }
+        @keyframes hue { 0% { background: #ffd400; } 50% { background: #00e5ff; } 100% { background: #ff0033; } }
+      </style>
+      <div class="bar"></div>`
+  }
+}
+
 if (!customElements.get('shadow-specimen')) customElements.define('shadow-specimen', ShadowSpecimen)
+if (!customElements.get('shadow-anim-specimen')) customElements.define('shadow-anim-specimen', ShadowAnimSpecimen)
 if (!customElements.get('closed-specimen')) customElements.define('closed-specimen', ClosedSpecimen)
 
 declare module 'react' {
@@ -76,6 +99,7 @@ declare module 'react' {
        */
       'shadow-specimen': { class?: string; children?: React.ReactNode }
       'closed-specimen': { class?: string }
+      'shadow-anim-specimen': Record<string, never>
     }
   }
 }
@@ -174,6 +198,44 @@ function VideoStreamSpec() {
     }
   }, [])
   return <video className="box" ref={ref} muted playsInline autoPlay />
+}
+
+/**
+ * #74: a CSS TRANSITION, not a keyframe animation. A class flips every 5s and the box takes 4s
+ * to get there, so most of the time it is mid-flight. The clone has the class but no running
+ * transition of its own, so without freezeAnimations it would render the END state at once:
+ * the video would show the box jumping between corners while the live one glides.
+ */
+function TransitionSpec() {
+  const [on, setOn] = useState(false)
+  useEffect(() => {
+    const id = window.setInterval(() => setOn((v) => !v), 5000)
+    const first = window.setTimeout(() => setOn(true), 300)
+    return () => {
+      window.clearInterval(id)
+      window.clearTimeout(first)
+    }
+  }, [])
+  return (
+    <div className="box spec-trans-box">
+      <span className={on ? 'spec-trans on' : 'spec-trans'} />
+    </div>
+  )
+}
+
+/**
+ * #74: the documented SKIP. A ::before keyframe animation has no element to pin an inline
+ * value to, so capture leaves it alone and the clone's own timeline restarts it at t=0 every
+ * frame: it should look FROZEN in the video while it moves live. Also creates an Animation with
+ * a null effect (the non-KeyframeEffect skip), which must not break the index.
+ */
+function PseudoSpec() {
+  useEffect(() => {
+    const a = new Animation(null, document.timeline)
+    a.play()
+    return () => a.cancel()
+  }, [])
+  return <div className="box spec-pseudo" />
 }
 
 function Specimens() {
@@ -306,6 +368,18 @@ function Specimens() {
           </div>
         </Figure>
 
+        <Figure id="transition" label="CSS transition, 4s, flips every 5s — must GLIDE, not jump">
+          <TransitionSpec />
+        </Figure>
+
+        <Figure id="shadow-anim" label="keyframes inside an open shadow root — must move">
+          <shadow-anim-specimen />
+        </Figure>
+
+        <Figure id="pseudo-anim" label="::before animation — known skip, EXPECTED FROZEN in video">
+          <PseudoSpec />
+        </Figure>
+
         <Figure id="form" label="live form state — projected as attributes">
           <div className="box" style={{ padding: 8, height: 134 }}>
             <input defaultValue="typed" style={{ width: '90%' }} />
@@ -341,8 +415,59 @@ function Specimens() {
  * first grab completes. In a BACKGROUNDED tab that never happens at all, because capture is
  * driven by requestAnimationFrame — see CLAUDE.md.
  */
+/**
+ * Frames actually PAINTED onto the stage canvas per second, counted by wrapping its drawImage
+ * — there is no stats API, and "the loop is running" has to be visible to someone looking at a
+ * screen, not inferred. In on-interaction mode this is the pass criterion: it should drop to 0
+ * about 600ms after you stop touching the page and come back the moment you move.
+ */
+function usePaintRate(): number {
+  const [fps, setFps] = useState(0)
+  useEffect(() => {
+    let painted = 0
+    let patched: CanvasRenderingContext2D | null = null
+    let original: CanvasRenderingContext2D['drawImage'] | null = null
+    const patch = () => {
+      const canvas = document.querySelector<HTMLCanvasElement>('.stage .rt-canvas')
+      const ctx = canvas?.getContext('2d') ?? null
+      if (!ctx || ctx === patched) return
+      patched = ctx
+      original = ctx.drawImage
+      const orig = original
+      ctx.drawImage = function (this: CanvasRenderingContext2D, ...args: unknown[]) {
+        painted++
+        return (orig as (...a: unknown[]) => void).apply(this, args)
+      } as CanvasRenderingContext2D['drawImage']
+    }
+    const id = window.setInterval(() => {
+      patch()
+      setFps(painted)
+      painted = 0
+    }, 1000)
+    return () => window.clearInterval(id)
+  }, [])
+  return fps
+}
+
 function Report({ handle }: { handle: MountedRoundTrip | null }) {
   const [rep, setRep] = useState<CaptureReport | null | undefined>(undefined)
+  const fps = usePaintRate()
+  /*
+   * A coarseness dial and a PEEK, so the specimens can be judged by someone at a screen (#74):
+   * at the page's default 0.8 the captions are unreadable in the video, which is the video
+   * doing its job and the reviewer not being able to tell which specimen is which. Peek hides
+   * the canvas (the live DOM underneath is always there) without stopping the pipeline.
+   */
+  const [coarse, setCoarse] = useState(0.8)
+  const [peek, setPeek] = useState(false)
+  useEffect(() => {
+    handle?.tune({ coarseness: coarse })
+  }, [handle, coarse])
+  useEffect(() => {
+    const c = document.querySelector<HTMLCanvasElement>('.stage .rt-canvas')
+    if (c) c.style.visibility = peek ? 'hidden' : ''
+  }, [peek, handle])
+  const mode = new URLSearchParams(location.search).get('mode') === 'on-interaction' ? 'on-interaction' : 'continuous'
 
   const read = React.useCallback(() => {
     setRep(handle ? (handle.report() ?? null) : null)
@@ -359,6 +484,8 @@ function Report({ handle }: { handle: MountedRoundTrip | null }) {
   return (
     <aside className="panel" style={{ position: 'fixed', right: 12, top: 12, zIndex: 50, width: 260 }}>
       <h2>Degradation</h2>
+      <pre className="device">{`mode             ${mode}
+painted / s      ${fps}`}</pre>
       <pre className="device">
         {rep
           ? `blocked images   ${rep.blockedImages}
@@ -370,6 +497,19 @@ ancestor bg img  ${rep.ancestorBackgroundImages}`
           : 'no frame captured yet'}
       </pre>
       <button onClick={read}>re-read</button>
+      <label style={{ display: 'block', marginTop: 10 }}>
+        coarseness {coarse.toFixed(2)}
+        <input
+          type="range"
+          min={0}
+          max={1}
+          step={0.01}
+          value={coarse}
+          onChange={(e) => setCoarse(Number(e.target.value))}
+          style={{ width: '100%' }}
+        />
+      </label>
+      <button onClick={() => setPeek((p) => !p)}>{peek ? 'show video' : 'peek at live page'}</button>
     </aside>
   )
 }
@@ -393,11 +533,14 @@ function Hostile() {
 
   useEffect(() => {
     if (!hostRef.current) return
+    // ?mode=on-interaction exercises the wake path (#74); anything else is continuous.
+    const mode = new URLSearchParams(location.search).get('mode') === 'on-interaction' ? 'on-interaction' : 'continuous'
     const mounted = mountRoundTrip(hostRef.current, {
       className: 'stage',
       coarseness: 0.8,
       gop: 20,
       captureFps: 20,
+      captureMode: mode,
     })
     setHandle(mounted)
     /*

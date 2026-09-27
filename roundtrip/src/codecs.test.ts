@@ -74,7 +74,10 @@ describe('resolveDials', () => {
   it('does NOT mosh AV1 or VP9 by default, because it does not look like moshing there', () => {
     expect(resolveDials('av1', {}).mosh).toBe(false)
     expect(resolveDials('vp9', {}).mosh).toBe(false)
-    expect(resolveDials('vp9', {}).gop).toBe('infinite')
+    // Finite since coarseness became a starved bitrate there (#72): the static page only
+    // breaks on keyframes, and heals between them.
+    expect(resolveDials('vp9', {}).gop).toBe(3)
+    expect(resolveDials('av1', {}).gop).toBe(3)
   })
 
   it('lets an explicit value win over the family default', () => {
@@ -94,6 +97,6 @@ describe('resolveDials', () => {
 
   it('fills only the undefined fields', () => {
     const r = resolveDials('av1', { coarseness: 0.2 })
-    expect(r).toEqual({ coarseness: 0.2, gop: 'infinite', mosh: false })
+    expect(r).toEqual({ coarseness: 0.2, gop: 3, mosh: false })
   })
 })

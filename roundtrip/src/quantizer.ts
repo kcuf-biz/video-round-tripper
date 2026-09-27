@@ -22,12 +22,52 @@ const RANGE: Record<CodecFamily, readonly [number, number]> = {
  */
 const FLOOR: Record<CodecFamily, number> = {
   avc: 18,
-  hevc: 20,
+  // 10, down from 20: the author by eye on /compare/ (2026-09-27, Mac Chrome, mosh off), matching AVC
+  // at the same coarseness. A lower floor means lower QPs, so at 20 HEVC read heavier than AVC
+  // through the bottom of the dial; the top (q51 at 1.0) is unchanged.
+  hevc: 10,
   vp9: 24,
   av1: 32,
 }
 
 export const clamp01 = (n: number): number => (n < 0 ? 0 : n > 1 ? 1 : n)
+
+/**
+ * WHICH DIAL `coarseness` DRIVES, per family: a quantizer, or a starved constant bitrate.
+ *
+ * AV1 and VP9 cannot be made heavy through the quantizer in Chrome (#72). Measured at 344x360,
+ * 16 frames, mosh off, bytes/frame from q2 to q63 (the top of the WebCodecs range):
+ *   avc   2730 -> 184        av1  3885 -> 1196        vp9  2978 -> 1324
+ * so at their maximum quantizer AV1/VP9 still spend what AVC does around q18-20 and come back
+ * nearly clean — no FLOOR value makes coarseness 0.78 look alike across families. Chrome's
+ * quantizer mode clamps short of what the codecs themselves can do: the SAME encoders under a
+ * constant bitrate go down to 258 (av1) / 299 (vp9) bytes/frame at 20kbps with every frame
+ * emitted, which is AVC-at-0.78 territory. So for these two the dial is a bitrate.
+ */
+export const RATE_CONTROL: Record<CodecFamily, 'quantizer' | 'constant'> = {
+  avc: 'quantizer',
+  hevc: 'quantizer',
+  av1: 'constant',
+  vp9: 'constant',
+}
+
+/*
+ * Bits per pixel per SECOND at the two ends of the dial, interpolated geometrically: bitrate
+ * perception is logarithmic, and a linear ramp would spend the whole top half of the slider on
+ * differences nobody can see. Calibrated at 344x360 / 20fps against AVC: 20kbps there
+ * (0.16 bpp/s) matches AVC at coarseness 0.78 in bytes/frame, and 200kbps (1.6) is close to
+ * clean. the author-by-eye pass on /compare/ is what these numbers answer to, like FLOOR above.
+ */
+const BPP_CLEAN = 3.0
+const BPP_STARVED = 0.07
+
+/** The constant bitrate `coarseness` asks for on a family whose RATE_CONTROL is 'constant'. */
+export function bitrateFor(coarseness: number, width: number, height: number): number {
+  const bpp = BPP_CLEAN * Math.pow(BPP_STARVED / BPP_CLEAN, clamp01(coarseness))
+  // Encoders reject absurdly low targets; below a few kbps nothing changes anyway (the
+  // keyframe floor measured the same at 8kbps as at 20kbps).
+  return Math.max(4_000, Math.round(bpp * width * height))
+}
 
 /**
  * Map the normalized 0..1 `coarseness` dial onto a concrete quantizer for one codec, so the
