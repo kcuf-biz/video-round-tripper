@@ -1,5 +1,5 @@
-import { useCallback, useMemo, useState } from 'react'
-import { RoundTrip, type CodecChoice, type CodecDials } from '@video-round-tripper/roundtrip'
+import { useCallback, useMemo, useRef, useState } from 'react'
+import { RoundTrip, type CodecChoice, type CodecDials, type RoundTripHandle } from '@video-round-tripper/roundtrip'
 import {
   Controls,
   DEFAULTS,
@@ -12,10 +12,12 @@ import {
 import { Page } from './content/Page.tsx'
 import { DeviceInfo } from './DeviceInfo.tsx'
 import { Overlay } from './Overlay.tsx'
+import { StageStats } from './StageStats.tsx'
 
 export function App() {
   const [k, setK] = useState<Knobs>(DEFAULTS)
   const [uiOpen, setUiOpen] = useState(true)
+  const stage = useRef<RoundTripHandle>(null)
 
   /*
    * What the stage resolved, straight from the pipeline. Stable identity for the callback so
@@ -81,6 +83,7 @@ export function App() {
         produce, so it is where the encoder falls apart hardest.
       */}
       <RoundTrip
+        ref={stage}
         className="stage"
         disabled={k.disabled}
         coarseness={requested.coarseness}
@@ -104,6 +107,7 @@ export function App() {
           requested={requested}
           picked={picked}
         />
+        <StageStats stage={stage} />
       </Overlay>
     </>
   )

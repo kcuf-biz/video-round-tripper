@@ -15,6 +15,7 @@ export type {
   RoundTripStatus,
 } from './core/createRoundTrip.ts'
 export { mountRoundTrip, type MountOptions, type MountedRoundTrip } from './mount.ts'
+export { readHandle, type RoundTripHandle } from './core/handle.ts'
 export { ensureStyles, ROUNDTRIP_CSS } from './core/styles.ts'
 export type {
   CaptureReport,

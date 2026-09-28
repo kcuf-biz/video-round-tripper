@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
 import type { CaptureSource, CodecChoice, CodecFamily, MoshConfig } from './types.ts'
 import type { CodecDials } from './codecs.ts'
@@ -8,6 +8,7 @@ import {
   type RoundTripController,
   type RoundTripStatus,
 } from './core/createRoundTrip.ts'
+import { readHandle, type RoundTripHandle } from './core/handle.ts'
 import { ensureStyles } from './core/styles.ts'
 
 /**
@@ -109,8 +110,13 @@ function usePrefersReducedMotion(): boolean {
  * The loop itself lives in core/createRoundTrip.ts. What is left here is the React-shaped
  * part: refs, one effect whose dependency array expresses which options force a rebuild, and
  * the reduced-motion bypass.
+ *
+ * A ref reads what the stage is doing: `ref.current.stats()` / `.report()`, see
+ * RoundTripHandle. The handle is stable for the component's life and reads the controller of
+ * the moment, so it survives rebuilds; poll it rather than keeping what it returns.
+ * forwardRef rather than ref-as-prop because the peer range still includes React 18.
  */
-export function RoundTrip(props: RoundTripProps) {
+export const RoundTrip = forwardRef<RoundTripHandle, RoundTripProps>(function RoundTrip(props, ref) {
   const {
     children,
     disabled,
@@ -139,6 +145,9 @@ export function RoundTrip(props: RoundTripProps) {
   const controllerRef = useRef<RoundTripController | null>(null)
   const [status, setStatus] = useState<RoundTripStatus>('idle')
   const [message, setMessage] = useState<string>('')
+
+  // Empty deps: the handle closes over the REF, not the controller, so it never goes stale.
+  useImperativeHandle(ref, () => readHandle(() => controllerRef.current), [])
 
   /*
    * Through a ref, never the dependency array below. A caller writes this as an inline arrow,
@@ -229,4 +238,4 @@ export function RoundTrip(props: RoundTripProps) {
       </span>
     </div>
   )
-}
+})

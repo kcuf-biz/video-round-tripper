@@ -1,12 +1,12 @@
 import {
   createRoundTrip,
-  idleStats,
   prefersReducedMotion,
   type RoundTripController,
   type RoundTripCoreOptions,
   type RoundTripDials,
   type RoundTripStats,
 } from './core/createRoundTrip.ts'
+import { readHandle } from './core/handle.ts'
 import { ensureStyles } from './core/styles.ts'
 import type { CaptureReport } from './types.ts'
 
@@ -129,8 +129,7 @@ export function mountRoundTrip(target: HTMLElement, opts: MountOptions = {}): Mo
 
   return {
     tune: (dials) => controller?.tune(dials),
-    report: () => controller?.report(),
-    stats: () => controller?.stats() ?? idleStats(),
+    ...readHandle(() => controller),
     unmount() {
       mq?.removeEventListener('change', apply)
       end()

@@ -15,6 +15,7 @@ export type {
   RoundTripDials,
   RoundTripStatus,
 } from './createRoundTrip.ts'
+export { readHandle, type RoundTripHandle } from './handle.ts'
 export { ensureStyles, ROUNDTRIP_CSS } from './styles.ts'
 export { mountRoundTrip, type MountOptions, type MountedRoundTrip } from '../mount.ts'
 
