@@ -91,3 +91,44 @@ export function isAwake(
   if (mode === 'continuous') return true
   return now - wokeAt <= wakeMs
 }
+
+/**
+ * A measured event rate over a trailing window: how many times `mark()` was called in the last
+ * `windowMs`, per second.
+ *
+ * For the PAINT rate in stats() (#79). It is measured rather than derived from captureFps because
+ * the two differ exactly when it matters: backpressure drops frames, a moshing decoder holds
+ * deltas while it waits for a recovery key, on-interaction mode stops capturing when idle, and a
+ * hidden tab pauses the whole loop. The page used to get this by wrapping drawImage on the
+ * overlay canvas. Read-time decay is the point of a trailing window: when marks stop, `rate()`
+ * falls to 0 within one window without anyone having to tell it the loop went quiet.
+ */
+export interface RateMeter {
+  mark(now: number): void
+  rate(now: number): number
+  reset(): void
+}
+
+export function createRateMeter(windowMs = 1000, cap = 512): RateMeter {
+  let stamps: number[] = []
+  const prune = (now: number) => {
+    const cutoff = now - windowMs
+    let i = 0
+    while (i < stamps.length && stamps[i]! <= cutoff) i++
+    if (i > 0) stamps = stamps.slice(i)
+  }
+  return {
+    mark(now) {
+      stamps.push(now)
+      // Bounded whatever happens: a caller that marks and never reads must not grow this forever.
+      if (stamps.length > cap) stamps = stamps.slice(stamps.length - cap)
+    },
+    rate(now) {
+      prune(now)
+      return (stamps.length * 1000) / windowMs
+    },
+    reset() {
+      stamps = []
+    },
+  }
+}

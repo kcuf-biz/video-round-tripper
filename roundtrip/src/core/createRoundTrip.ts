@@ -2,7 +2,7 @@ import type { CaptureReport, CaptureSource, CodecChoice, CodecFamily, MoshConfig
 import { createForeignObjectSource } from '../capture/foreignObjectSource.ts'
 import { probeCodec } from '../codec/probe.ts'
 import { createPipeline, type Pipeline } from '../codec/pipeline.ts'
-import { contentSize, createPacer, encodeSize, isAwake, WAKE_MS } from '../frameBudget.ts'
+import { contentSize, createPacer, createRateMeter, encodeSize, isAwake, WAKE_MS } from '../frameBudget.ts'
 import { resolveDials, type CodecDials } from '../codecs.ts'
 import { ensureStyles } from './styles.ts'
 
@@ -66,6 +66,47 @@ export interface RoundTripCoreOptions extends RoundTripDials {
   onCodec?: (choice: CodecChoice, resolved: CodecDials) => void
 }
 
+/**
+ * What the controller is doing right now, for a page that wants to SHOW it (#79).
+ *
+ * The marketing page's "Your codec" panel used to read all of this from outside — codec from
+ * onCodec, sizes from the overlay canvas plus encodeSize(), paint rate by wrapping drawImage on
+ * the canvas's 2D context — which broke silently whenever the core changed an internal (#75
+ * moved the canvas from the encode size to the content size). Everything here is read off the
+ * running build, so a page never has to know how the stage is put together.
+ *
+ * PER BUILD: every rebuild (a resize, after the 150ms debounce) starts a fresh encoder and
+ * decoder, so the counters restart at 0 and `builds` goes up. That is the honest reading — a
+ * resize forces a keyframe and resets everything the piece had accumulated.
+ */
+export interface RoundTripStats {
+  /** Same values onStatus reports: 'running' only once this build has painted a frame. */
+  status: RoundTripStatus
+  /** What the probe picked for this build; null until it answers, or if nothing was supported. */
+  codec: CodecChoice | null
+  /** The encoder's frame: even, for 4:2:0. */
+  encodeSize: { width: number; height: number } | null
+  /** The part of the encode frame the content occupies, and the canvas's backing size. */
+  contentSize: { width: number; height: number } | null
+  /** Frames the encoder emitted, the decoder emitted, backpressure dropped, and mosh withheld. */
+  encoded: number
+  decoded: number
+  dropped: number
+  moshed: number
+  /** Times the decoder died and was rebuilt; expected under moshing on av1/vp9. */
+  decoderResets: number
+  /** Frames actually drawn onto the canvas this build. */
+  painted: number
+  /**
+   * Painted frames per second, MEASURED over the last second. Not captureFps: backpressure,
+   * moshing, on-interaction idling and a hidden tab all make the two differ, and it decays to
+   * 0 on its own when painting stops.
+   */
+  paintFps: number
+  /** How many times the pipeline has been built — 1 plus every resize-triggered rebuild. */
+  builds: number
+}
+
 export interface RoundTripController {
   /** Live-update the artifact dials. Anything else needs dispose() + a new controller. */
   tune(dials: RoundTripDials): void
@@ -79,7 +120,27 @@ export interface RoundTripController {
    * returns zeroes. Those are different answers and the demo panels distinguish them.
    */
   report(): CaptureReport | undefined
+  /** A snapshot of what the controller is doing. Cheap: poll it. See RoundTripStats. */
+  stats(): RoundTripStats
   dispose(): void
+}
+
+/** The stats of a controller that has not built anything — also what an unmounted handle reads. */
+export function idleStats(): RoundTripStats {
+  return {
+    status: 'idle',
+    codec: null,
+    encodeSize: null,
+    contentSize: null,
+    encoded: 0,
+    decoded: 0,
+    dropped: 0,
+    moshed: 0,
+    decoderResets: 0,
+    painted: 0,
+    paintFps: 0,
+    builds: 0,
+  }
 }
 
 /**
@@ -142,8 +203,18 @@ export function createRoundTrip(opts: RoundTripCoreOptions): RoundTripController
   let source: CaptureSource | null = null
   let stopRun: (() => void) | null = null
 
+  // What stats() reads. Written where each fact is decided, never recomputed on read.
+  let currentStatus: RoundTripStatus = 'idle'
+  let currentChoice: CodecChoice | null = null
+  let currentSizes: { enc: { width: number; height: number }; view: { width: number; height: number } } | null = null
+  let paintedCount = 0
+  let builds = 0
+  const paintMeter = createRateMeter()
+
   const setStatus = (status: RoundTripStatus, message: string) => {
-    if (!disposed) onStatus?.(status, message)
+    if (disposed) return
+    currentStatus = status
+    onStatus?.(status, message)
   }
 
   function start(enc: { width: number; height: number }, view: { width: number; height: number }): void {
@@ -155,6 +226,11 @@ export function createRoundTrip(opts: RoundTripCoreOptions): RoundTripController
     // Resizing the canvas clears it, so a rebuild is back to "nothing painted": show the live
     // content until this build's first frame rather than a blank overlay.
     setStatus('idle', '')
+    builds++
+    currentSizes = { enc, view }
+    currentChoice = null
+    paintedCount = 0
+    paintMeter.reset()
     /*
      * The canvas backing store is the CONTENT rect, not the encode frame, and only that rect of
      * each decoded frame is drawn. Backlog #75: at the encode size an odd display height put
@@ -199,6 +275,7 @@ export function createRoundTrip(opts: RoundTripCoreOptions): RoundTripController
        * turned out to admit to. Anything the caller stated explicitly wins.
        */
       family = choice.family
+      currentChoice = choice
       const resolved = resolveDials(family, dials)
       // Reported here, next to the resolution itself, so what the caller is told and what the
       // pipeline is built with can never drift apart. Once per build, like onStatus's
@@ -219,6 +296,8 @@ export function createRoundTrip(opts: RoundTripCoreOptions): RoundTripController
           try {
             if (!cancelled) {
               ctx?.drawImage(frame, 0, 0, view.width, view.height, 0, 0, canvas.width, canvas.height)
+              paintedCount++
+              paintMeter.mark(performance.now())
               if (!painted) {
                 painted = true
                 setStatus('running', runningMessage)
@@ -353,6 +432,23 @@ export function createRoundTrip(opts: RoundTripCoreOptions): RoundTripController
     },
     report() {
       return source?.report?.()
+    },
+    stats() {
+      const p = pipeline?.stats
+      return {
+        status: currentStatus,
+        codec: currentChoice,
+        encodeSize: currentSizes ? { ...currentSizes.enc } : null,
+        contentSize: currentSizes ? { ...currentSizes.view } : null,
+        encoded: p?.encoded ?? 0,
+        decoded: p?.decoded ?? 0,
+        dropped: p?.dropped ?? 0,
+        moshed: p?.moshed ?? 0,
+        decoderResets: p?.decoderResets ?? 0,
+        painted: paintedCount,
+        paintFps: paintMeter.rate(performance.now()),
+        builds,
+      }
     },
     dispose() {
       disposed = true

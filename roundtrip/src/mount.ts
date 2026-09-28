@@ -1,9 +1,11 @@
 import {
   createRoundTrip,
+  idleStats,
   prefersReducedMotion,
   type RoundTripController,
   type RoundTripCoreOptions,
   type RoundTripDials,
+  type RoundTripStats,
 } from './core/createRoundTrip.ts'
 import { ensureStyles } from './core/styles.ts'
 import type { CaptureReport } from './types.ts'
@@ -34,6 +36,12 @@ export interface MountedRoundTrip {
   tune(dials: RoundTripDials): void
   /** The capture source's degradation report, if it has one. See RoundTripController. */
   report(): CaptureReport | undefined
+  /**
+   * What the stage is doing: status, codec, encode/content size, pipeline counters and a
+   * measured paint rate. Poll it. Reads as idle (zeros, nulls) while bypassed for reduced
+   * motion or after unmount(). See RoundTripStats.
+   */
+  stats(): RoundTripStats
   /** Stop, and put the host page's DOM back the way it was. */
   unmount(): void
 }
@@ -122,6 +130,7 @@ export function mountRoundTrip(target: HTMLElement, opts: MountOptions = {}): Mo
   return {
     tune: (dials) => controller?.tune(dials),
     report: () => controller?.report(),
+    stats: () => controller?.stats() ?? idleStats(),
     unmount() {
       mq?.removeEventListener('change', apply)
       end()

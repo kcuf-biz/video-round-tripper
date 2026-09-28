@@ -6,11 +6,12 @@ export { RoundTrip, type RoundTripProps } from './RoundTrip.tsx'
 
 // The framework-free controller and the vanilla mount. The React component is a thin wrapper
 // over the first of these; the second is what a plain page (or the IIFE bundle) uses.
-export { createRoundTrip, prefersReducedMotion } from './core/createRoundTrip.ts'
+export { createRoundTrip, idleStats, prefersReducedMotion } from './core/createRoundTrip.ts'
 export type {
   RoundTripController,
   RoundTripCoreOptions,
   RoundTripDials,
+  RoundTripStats,
   RoundTripStatus,
 } from './core/createRoundTrip.ts'
 export { mountRoundTrip, type MountOptions, type MountedRoundTrip } from './mount.ts'
@@ -44,4 +45,4 @@ export {
 // The pure bits, exported because they are useful to test against and to reason about.
 export { bitrateFor, encodeOptionsFor, familyOf, gopFor, quantizerFor, RATE_CONTROL } from './quantizer.ts'
 export { createMoshFilter, type MoshFilter } from './mosh.ts'
-export { contentSize, encodeSize, createPacer } from './frameBudget.ts'
+export { contentSize, createPacer, createRateMeter, encodeSize, type RateMeter } from './frameBudget.ts'

@@ -7,9 +7,10 @@
  * grepping the output; the discipline is "do not import ../RoundTrip.tsx or ../index.ts from
  * anything under core/".
  */
-export { createRoundTrip, prefersReducedMotion } from './createRoundTrip.ts'
+export { createRoundTrip, idleStats, prefersReducedMotion } from './createRoundTrip.ts'
 export type {
   RoundTripController,
+  RoundTripStats,
   RoundTripCoreOptions,
   RoundTripDials,
   RoundTripStatus,
@@ -46,4 +47,4 @@ export {
 // The pure bits, exported because they are useful to test against and to reason about.
 export { bitrateFor, encodeOptionsFor, familyOf, gopFor, quantizerFor, RATE_CONTROL } from '../quantizer.ts'
 export { createMoshFilter, type MoshFilter } from '../mosh.ts'
-export { contentSize, encodeSize, createPacer } from '../frameBudget.ts'
+export { contentSize, createPacer, createRateMeter, encodeSize, type RateMeter } from '../frameBudget.ts'

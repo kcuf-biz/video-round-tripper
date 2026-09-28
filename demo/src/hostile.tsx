@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react'
 import ReactDOM from 'react-dom/client'
-import { mountRoundTrip, type CaptureReport, type MountedRoundTrip } from '@video-round-tripper/roundtrip'
+import { mountRoundTrip, type CaptureReport, type MountedRoundTrip, type RoundTripStats } from '@video-round-tripper/roundtrip'
 import './index.css'
 import './hostile.css'
 
@@ -416,42 +416,25 @@ function Specimens() {
  * driven by requestAnimationFrame — see CLAUDE.md.
  */
 /**
- * Frames actually PAINTED onto the stage canvas per second, counted by wrapping its drawImage
- * — there is no stats API, and "the loop is running" has to be visible to someone looking at a
- * screen, not inferred. In on-interaction mode this is the pass criterion: it should drop to 0
- * about 600ms after you stop touching the page and come back the moment you move.
+ * The controller's own stats (#79), polled. This page used to count paints by wrapping
+ * drawImage on the stage canvas, the same trick the marketing page's readout needed, which is
+ * why stats() exists. In on-interaction mode the paint rate is the pass criterion: it falls to 0
+ * about 600ms after you stop touching the page and comes back the moment you move.
  */
-function usePaintRate(): number {
-  const [fps, setFps] = useState(0)
+function useStats(handle: MountedRoundTrip | null): RoundTripStats | null {
+  const [stats, setStats] = useState<RoundTripStats | null>(null)
   useEffect(() => {
-    let painted = 0
-    let patched: CanvasRenderingContext2D | null = null
-    let original: CanvasRenderingContext2D['drawImage'] | null = null
-    const patch = () => {
-      const canvas = document.querySelector<HTMLCanvasElement>('.stage .rt-canvas')
-      const ctx = canvas?.getContext('2d') ?? null
-      if (!ctx || ctx === patched) return
-      patched = ctx
-      original = ctx.drawImage
-      const orig = original
-      ctx.drawImage = function (this: CanvasRenderingContext2D, ...args: unknown[]) {
-        painted++
-        return (orig as (...a: unknown[]) => void).apply(this, args)
-      } as CanvasRenderingContext2D['drawImage']
-    }
-    const id = window.setInterval(() => {
-      patch()
-      setFps(painted)
-      painted = 0
-    }, 1000)
+    const read = () => setStats(handle ? handle.stats() : null)
+    read()
+    const id = window.setInterval(read, 500)
     return () => window.clearInterval(id)
-  }, [])
-  return fps
+  }, [handle])
+  return stats
 }
 
 function Report({ handle }: { handle: MountedRoundTrip | null }) {
   const [rep, setRep] = useState<CaptureReport | null | undefined>(undefined)
-  const fps = usePaintRate()
+  const st = useStats(handle)
   /*
    * A coarseness dial and a PEEK, so the specimens can be judged by someone at a screen (#74):
    * at the page's default 0.8 the captions are unreadable in the video, which is the video
@@ -484,8 +467,16 @@ function Report({ handle }: { handle: MountedRoundTrip | null }) {
   return (
     <aside className="panel" style={{ position: 'fixed', right: 12, top: 12, zIndex: 50, width: 260 }}>
       <h2>Degradation</h2>
-      <pre className="device">{`mode             ${mode}
-painted / s      ${fps}`}</pre>
+      <pre className="device">{st
+        ? `mode             ${mode}
+status           ${st.status}
+codec            ${st.codec ? `${st.codec.codec} ${st.codec.bitrateMode}` : '-'}
+encode / content ${st.encodeSize ? `${st.encodeSize.width}x${st.encodeSize.height}` : '-'} / ${st.contentSize ? `${st.contentSize.width}x${st.contentSize.height}` : '-'}
+painted / s      ${st.paintFps}
+enc/dec/drop     ${st.encoded}/${st.decoded}/${st.dropped}
+moshed / resets  ${st.moshed}/${st.decoderResets}
+builds           ${st.builds}`
+        : `mode             ${mode}`}</pre>
       <pre className="device">
         {rep
           ? `blocked images   ${rep.blockedImages}

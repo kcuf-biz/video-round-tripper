@@ -110,6 +110,7 @@ import { mountRoundTrip } from '@video-round-tripper/roundtrip/core'
 const handle = mountRoundTrip(document.querySelector('#app'), { coarseness: 0.8 })
 // handle.tune({ coarseness: 0.5 })   live dials, no rebuild
 // handle.report()                    what the last capture lost
+// handle.stats()                     what the stage is doing: codec, sizes, counters, paint rate
 // handle.unmount()                   puts the DOM back exactly as it was
 ```
 
@@ -191,6 +192,29 @@ keyframe leaves later deltas referencing state the decoder never got; a conforma
 answers with a decoding error, and a `VideoDecoder` that errors is closed. The pipeline
 rebuilds it, asks the encoder for a keyframe and lets that one through. Bloom, collapse, snap
 to clean, bloom again — that cycle *is* datamoshing, not a fault being papered over.
+
+## Stats
+
+A page that wants to show what the stage is doing polls `stats()` — on the vanilla handle and
+on the controller from `createRoundTrip`. There is no need to reach into the canvas for any of it.
+
+```js
+handle.stats()
+// { status: 'running', codec: { codec: 'avc1.64001f', family: 'avc', bitrateMode: 'quantizer', … },
+//   encodeSize: { width: 402, height: 302 }, contentSize: { width: 401, height: 301 },
+//   encoded: 812, decoded: 809, dropped: 3, moshed: 40, decoderResets: 0,
+//   painted: 809, paintFps: 19, builds: 1 }
+```
+
+- `status` — the same values `onStatus` reports; `running` only once this build has painted.
+- `encodeSize` is the encoder's frame (even, for 4:2:0); `contentSize` is the part of it the
+  content fills and is the canvas's backing size.
+- The counters and `painted` are **per build**: a resize rebuilds the encoder and they restart
+  at 0, with `builds` going up.
+- `paintFps` is measured over the last second, not derived from `captureFps`. It drops when
+  backpressure or moshing withholds frames, and falls to 0 on its own when nothing paints
+  (on-interaction idle, a hidden tab).
+- Bypassed (reduced motion) or unmounted, it reads idle: nulls and zeros.
 
 ## The degradation report
 
