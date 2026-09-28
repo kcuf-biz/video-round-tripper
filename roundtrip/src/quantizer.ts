@@ -74,7 +74,9 @@ const BPP_STARVED = 0.07
  * periodic keys at all: the page heals and stays clean. Geometric from a key every 60 frames
  * to every 2, for the same reason bitrateFor is.
  *
- * On trial: the author agreed to test this, not to keep it.
+ * the author by eye on /compare/ (2026-09-28): "roughly the right shape", may want further tweaking
+ * of the curve. The shape (none -> ~15 -> ~5 -> 2) is the part that was judged, not the exact
+ * constants.
  */
 export function gopFor(coarseness: number): number | 'infinite' {
   const c = clamp01(coarseness)
