@@ -205,6 +205,22 @@ export function freezeAnimations(pairs: readonly ElementPair[], index: Animation
         d.style.setProperty(name, value)
       }
     }
+    /*
+     * CUSTOM PROPERTIES ARE MISSING FROM getKeyframes(). Chrome returns empty keyframes for a
+     * CSS animation of a registered (@property) custom property, so the loop above never sees
+     * `--sway` or `--g3`, and the clone froze them at their initial value while everything else
+     * moved: the marketing page's background stops read 0.00 mean diff across a 40s seek in the
+     * video against 9.73 live, and its rainbows' angle sway had never moved in the video at all
+     * (the author, 2026-10-03). So every custom property on an animated element is pinned too, at its
+     * live computed value. That is exactly what the element has right now, so it is safe for
+     * inherited ones as well; and it costs nothing on elements that animate nothing.
+     */
+    for (let i = 0; i < pair.cs.length; i++) {
+      const name = pair.cs[i]!
+      if (!name.startsWith('--')) continue
+      const value = pair.cs.getPropertyValue(name)
+      if (value !== '') d.style.setProperty(name, value)
+    }
 
     d.style.setProperty('animation', 'none')
     d.style.setProperty('transition', 'none')
