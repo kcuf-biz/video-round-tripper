@@ -320,6 +320,21 @@ function Specimens() {
           <div className="box spec-field" />
         </Figure>
 
+        {/* #86, #87 — see the end of hostile.css for what each one used to capture as. */}
+        <Figure id="vw" label="15vw bar, cyan above a 1000px breakpoint — same in video at ?scale=0.5">
+          <div className="box spec-vw">
+            <span className="vw" />
+          </div>
+        </Figure>
+
+        <Figure id="css-prop" label="@property angle animated inside the capture — cone must turn">
+          <div className="box spec-prop" />
+        </Figure>
+
+        <Figure id="bg-var" label="background: var() then a longhand — stripes, not grey">
+          <div className="spec-bgvar" />
+        </Figure>
+
         {/*
           #62: every one of these, alone, used to lose the WHOLE frame ("The source image
           cannot be decoded.") — a comment with a double hyphen, Alpine's @click and :class,
@@ -525,13 +540,17 @@ function Hostile() {
   useEffect(() => {
     if (!hostRef.current) return
     // ?mode=on-interaction exercises the wake path (#74); anything else is continuous.
-    const mode = new URLSearchParams(location.search).get('mode') === 'on-interaction' ? 'on-interaction' : 'continuous'
+    const params = new URLSearchParams(location.search)
+    const mode = params.get('mode') === 'on-interaction' ? 'on-interaction' : 'continuous'
+    // ?scale=0.5 is how the vw specimen is judged (#86): the frame must not re-lay out.
+    const encodeScale = Number(params.get('scale')) || 1
     const mounted = mountRoundTrip(hostRef.current, {
       className: 'stage',
       coarseness: 0.8,
       gop: 20,
       captureFps: 20,
       captureMode: mode,
+      encodeScale,
     })
     setHandle(mounted)
     /*
