@@ -2,6 +2,7 @@ import type { CodecChoice, MoshConfig } from '../types.ts'
 import { bitrateFor, encodeOptionsFor, quantizerFor, RATE_CONTROL } from '../quantizer.ts'
 import { createMoshFilter, sameMoshConfig } from '../mosh.ts'
 import { shouldDropForBackpressure } from '../frameBudget.ts'
+import { framerateApplies } from '../framerate.ts'
 
 /**
  * Encoder -> mosh filter -> decoder, as one unit.
@@ -32,7 +33,7 @@ export interface Pipeline {
   /** Push one captured frame. Takes ownership: the frame is closed here, always. */
   push(frame: VideoFrame): void
   /** Live-update the artifact dials without tearing the pipeline down. */
-  tune(next: Partial<Pick<PipelineOptions, 'coarseness' | 'rawQuantizer' | 'gop' | 'mosh'>>): void
+  tune(next: Partial<Pick<PipelineOptions, 'coarseness' | 'rawQuantizer' | 'gop' | 'mosh' | 'declaredFramerate'>>): void
   close(): void
   readonly stats: {
     encoded: number
@@ -45,7 +46,7 @@ export interface Pipeline {
 }
 
 export function createPipeline(opts: PipelineOptions): Pipeline {
-  let { coarseness, rawQuantizer, gop, mosh } = opts
+  let { coarseness, rawQuantizer, gop, mosh, declaredFramerate } = opts
   let filter = createMoshFilter(mosh)
   // Two counters, deliberately. Keyframe REQUESTS are a property of the input stream
   // (which frame are we about to encode); mosh DECISIONS are a property of the output
@@ -158,12 +159,22 @@ export function createPipeline(opts: PipelineOptions): Pipeline {
   const RETARGET_MS = 250
   let lastRetarget = 0
 
+  /*
+   * declaredFramerate rides the same reconfigure (#70): in a bitrate mode it is the per-frame
+   * budget's divisor, so changing it live is exactly as cheap as changing the bitrate — one
+   * configure(), one forced keyframe, rate-limited the same way. In quantizer mode it is never
+   * applied, because it would cost that keyframe and buy nothing; the core warns instead.
+   */
+  const framerateDial = framerateApplies(opts.bitrateMode)
+
   function retarget(): void {
-    if (!bitrateDial) return
-    const want = targetBitrate()
+    const wantBitrate = bitrateDial ? targetBitrate() : cfg.bitrate
+    const wantFramerate = framerateDial ? declaredFramerate : cfg.framerate
+    if (wantBitrate === cfg.bitrate && wantFramerate === cfg.framerate) return
     const now = performance.now()
-    if (want === cfg.bitrate || now - lastRetarget < RETARGET_MS) return
-    cfg.bitrate = want
+    if (now - lastRetarget < RETARGET_MS) return
+    cfg.bitrate = wantBitrate
+    cfg.framerate = wantFramerate
     lastRetarget = now
     encoder.configure(cfg)
   }
@@ -208,6 +219,7 @@ export function createPipeline(opts: PipelineOptions): Pipeline {
       if (next.coarseness !== undefined) coarseness = next.coarseness
       if (next.rawQuantizer !== undefined) rawQuantizer = next.rawQuantizer
       if (next.gop !== undefined) gop = next.gop
+      if (next.declaredFramerate !== undefined) declaredFramerate = next.declaredFramerate
       if (next.mosh !== undefined && !sameMoshConfig(mosh, next.mosh)) {
         /*
          * Two things are load-bearing here.

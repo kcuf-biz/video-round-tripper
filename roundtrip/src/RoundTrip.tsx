@@ -49,6 +49,8 @@ export interface RoundTripProps {
   /**
    * The lie. Configure the rate controller for this framerate while feeding it far fewer
    * frames, so it budgets tiny frames and starves itself. Independent of captureFps.
+   * BITRATE MODES ONLY: on a quantizer-mode stream (avc/hevc by default) it does nothing and
+   * warns once. Changing it here rebuilds the pipeline. Defaults to 60.
    */
   declaredFramerate?: number
   /** 0..1 — encode below display resolution and let the canvas upscale. Cheap, very effective. */
@@ -128,7 +130,8 @@ export const RoundTrip = forwardRef<RoundTripHandle, RoundTripProps>(function Ro
     coarseness,
     rawQuantizer,
     bitrate,
-    declaredFramerate = 60,
+    // No default here: undefined is how the core tells "unset" from "set to 60" (#70).
+    declaredFramerate,
     encodeScale = 1,
     gop,
     mosh,
