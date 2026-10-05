@@ -19,5 +19,6 @@ export function emptyReport(): CaptureReport {
     iframes: 0,
     brokenReferences: 0,
     ancestorBackgroundImages: 0,
+    lostDeclarations: 0,
   }
 }

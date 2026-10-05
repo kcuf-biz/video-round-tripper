@@ -25,7 +25,7 @@
 import type { ElementPair } from './pairs.ts'
 import type { ResourceCache } from './inlineResources.ts'
 import type { CaptureReport } from './report.ts'
-import { inlineCssUrls } from './cssResources.ts'
+import { inlineCssUrls, lostDeclarations } from './cssResources.ts'
 import { rewriteStateRules } from './interactionState.ts'
 
 /* ------------------------------------------------------------------ pure selector rewriting */
@@ -131,36 +131,125 @@ const rootId = (root: ShadowRoot): number => {
   return id
 }
 
-/** Rewritten (but not yet url-inlined) shadow CSS, memoised — the rewrite is the slow half. */
-const ROOT_CSS = new WeakMap<ShadowRoot, string>()
+/* ------------------------------------------------------------- authored text, per rule (#94) */
 
-function rewriteRules(rules: CSSRuleList, host: string): string {
+/** One top-level rule as WRITTEN: its prelude, and its block's inside (null for a statement). */
+export interface RuleText {
+  prelude: string
+  body: string | null
+}
+
+/**
+ * Split stylesheet text into its top-level rules, without interpreting any of them.
+ *
+ * Exists for the same hole #87 guarded for document sheets: `background: var(--x);
+ * background-size: 8px` in one rule serializes as `background-image: ;` and the var() text is
+ * gone from the CSSOM entirely. Shadow CSS is rewritten rule by rule, so the whole-sheet
+ * fallback cssResources.ts uses does not fit; this gives each rule its own authored block to
+ * fall back to. Comments and strings are skipped so a brace inside either cannot end a block.
+ * @import and @charset are dropped, because a constructed sheet drops them too and the result
+ * is index-matched against one.
+ */
+export function splitRuleText(css: string): RuleText[] {
+  const out: RuleText[] = []
+  let depth = 0
+  let quote: string | null = null
+  let start = 0 // where the current rule's prelude began
+  let bodyStart = -1
+  for (let i = 0; i < css.length; i++) {
+    const c = css[i]!
+    if (quote) {
+      if (c === '\\') i++
+      else if (c === quote) quote = null
+    } else if (c === '/' && css[i + 1] === '*') {
+      const end = css.indexOf('*/', i + 2)
+      i = end === -1 ? css.length : end + 1
+    } else if (c === '"' || c === "'") {
+      quote = c
+    } else if (c === '{') {
+      if (depth++ === 0) bodyStart = i + 1
+    } else if (c === '}' && depth > 0) {
+      if (--depth === 0) {
+        out.push({ prelude: css.slice(start, bodyStart - 1), body: css.slice(bodyStart, i) })
+        start = i + 1
+      }
+    } else if (c === ';' && depth === 0) {
+      out.push({ prelude: css.slice(start, i), body: null })
+      start = i + 1
+    }
+  }
+  return out
+    .map((r) => ({ ...r, prelude: r.prelude.replace(/\/\*[\s\S]*?\*\//g, '').trim() }))
+    .filter((r) => r.prelude !== '' && !/^@(import|charset)\b/i.test(r.prelude))
+}
+
+/** Whether `prelude` parses to the selector the live rule holds: the per-rule check on the pairing. */
+function sameSelector(prelude: string, selectorText: string): boolean {
+  try {
+    const probe = new CSSStyleSheet()
+    probe.replaceSync(`${prelude}{}`)
+    const rule = probe.cssRules[0]
+    return rule instanceof CSSStyleRule && rule.selectorText === selectorText
+  } catch {
+    return false
+  }
+}
+
+/** Rewritten (but not yet url-inlined) shadow CSS, memoised — the rewrite is the slow half. */
+const ROOT_CSS = new WeakMap<ShadowRoot, { css: string; lost: number }>()
+
+/**
+ * `authored` is the same level of the sheet as text, or null when there is none (an adopted
+ * sheet). It is trusted only while it holds exactly as many rules as the CSSOM does — a rule
+ * the parser rejected shifts every index after it — and a lossy style rule takes its authored
+ * block only if that rule's prelude parses to the same selector. Anything else keeps the lossy
+ * cssText and is counted, so the loss shows in report() instead of as a quietly blank box.
+ */
+function rewriteRules(rules: CSSRuleList, host: string, authored: RuleText[] | null, lost: { n: number }): string {
+  const list = Array.from(rules)
+  const text = authored !== null && authored.length === list.length ? authored : null
   let out = ''
-  for (const rule of Array.from(rules)) {
+  list.forEach((rule, i) => {
+    const own = text?.[i]
     if (typeof CSSStyleRule !== 'undefined' && rule instanceof CSSStyleRule) {
-      out += `${rewriteSelector(rule.selectorText, host)}{${rule.style.cssText}}\n`
+      let body = rule.style.cssText
+      if (lostDeclarations(rule)) {
+        if (own?.body != null && sameSelector(own.prelude, rule.selectorText)) body = own.body
+        else lost.n++
+      }
+      out += `${rewriteSelector(rule.selectorText, host)}{${body}}\n`
     } else if (typeof CSSGroupingRule !== 'undefined' && rule instanceof CSSGroupingRule) {
       // @media / @supports / @container: the condition survives, the selectors inside do not.
-      const text = rule.cssText
-      const head = text.slice(0, text.indexOf('{'))
-      out += `${head}{\n${rewriteRules(rule.cssRules, host)}}\n`
+      const css = rule.cssText
+      const head = css.slice(0, css.indexOf('{'))
+      const inner = own?.body != null && own.prelude.startsWith('@') ? splitRuleText(own.body) : null
+      out += `${head}{\n${rewriteRules(rule.cssRules, host, inner, lost)}}\n`
     } else {
       // @font-face, @keyframes, @property: no selectors, and all of them are document-scoped
       // in the flat tree anyway.
       out += rule.cssText + '\n'
     }
-  }
+  })
   return out
 }
 
-function shadowCss(root: ShadowRoot, host: string): string {
+/**
+ * What #94 covers and what it does not. A shadow `<style>` is covered: its textContent is the
+ * authored text, so a rule whose cssText lost a var() shorthand gets its block back, nested
+ * inside @media/@supports too. An ADOPTED sheet is not: a constructed sheet keeps no source
+ * text anywhere (replaceSync's argument is gone once parsed), so its lossy rules are emitted as
+ * the CSSOM has them and counted in `report.lostDeclarations`. Neither are @keyframes steps,
+ * which go out by cssText whole.
+ */
+function shadowCss(root: ShadowRoot, host: string): { css: string; lost: number } {
   const memo = ROOT_CSS.get(root)
   if (memo !== undefined) return memo
 
+  const lost = { n: 0 }
   let raw = ''
   for (const sheet of Array.from(root.adoptedStyleSheets ?? [])) {
     try {
-      raw += rewriteRules(sheet.cssRules, host)
+      raw += rewriteRules(sheet.cssRules, host, null, lost)
     } catch {
       /* a constructed sheet should always be readable; if not, skip it */
     }
@@ -169,18 +258,20 @@ function shadowCss(root: ShadowRoot, host: string): string {
     // Parse through the CSSOM rather than by hand: selector text is the only part being
     // rewritten and everything else should come back byte-for-byte as the engine sees it.
     try {
+      const text = style.textContent ?? ''
       const sheet = new CSSStyleSheet()
-      sheet.replaceSync(style.textContent ?? '')
-      raw += rewriteRules(sheet.cssRules, host)
+      sheet.replaceSync(text)
+      const authored = Array.from(sheet.cssRules).some(lostDeclarations) ? splitRuleText(text) : null
+      raw += rewriteRules(sheet.cssRules, host, authored, lost)
     } catch {
       /* unparseable: dropping it is better than leaking it unscoped into the document */
     }
   }
 
   // :host(:hover) and friends need the same treatment as the page's own sheets.
-  raw = rewriteStateRules(raw)
-  ROOT_CSS.set(root, raw)
-  return raw
+  const result = { css: rewriteStateRules(raw), lost: lost.n }
+  ROOT_CSS.set(root, result)
+  return result
 }
 
 /**
@@ -287,7 +378,9 @@ export async function flattenShadowRoots(
     for (const node of dstKids) if (node.parentNode === dst) dst.removeChild(node)
     dst.appendChild(frag)
 
-    css += (await inlineCssUrls(shadowCss(root, host), doc.baseURI, cache)) + '\n'
+    const sheet = shadowCss(root, host)
+    report.lostDeclarations += sheet.lost
+    css += (await inlineCssUrls(sheet.css, doc.baseURI, cache)) + '\n'
   }
 
   return css

@@ -42,6 +42,13 @@ export interface CaptureReport {
    * clone does not have, so it is left out and counted here.
    */
   ancestorBackgroundImages: number
+  /**
+   * Style rules whose declarations Chrome could not serialize (a var() shorthand followed by
+   * one of its longhands, #87/#94) and that had no authored text to fall back to: a sheet built
+   * through insertRule, or a shadow root's adoptedStyleSheets. Whatever the shorthand set is
+   * missing from the frame.
+   */
+  lostDeclarations: number
 }
 
 /** A frame source. Implementations own their frames until handed over; the consumer closes them. */

@@ -244,7 +244,7 @@ export async function inlineCssUrls(
  * the var() text any more. Verified in Chrome 151 for `background` and `margin`; any shorthand
  * should do the same. An empty longhand is the tell. Custom properties may legitimately be empty.
  */
-function lostDeclarations(rule: CSSRule): boolean {
+export function lostDeclarations(rule: CSSRule): boolean {
   const style = (rule as Partial<CSSStyleRule>).style
   if (style) {
     for (let i = 0; i < style.length; i++) {
@@ -295,8 +295,10 @@ async function sheetText(
   const base = sheet.href ?? doc.baseURI
 
   if (rules !== null) {
-    const authored = Array.from(rules).some(lostDeclarations) ? await authoredText(sheet, rules, cache) : null
+    const lossy = Array.from(rules).filter(lostDeclarations).length
+    const authored = lossy > 0 ? await authoredText(sheet, rules, cache) : null
     if (authored !== null) return inlineCssUrls(authored, base, cache)
+    cache.stats.lostDeclarations += lossy
     let css = ''
     for (const rule of Array.from(rules)) {
       // A readable @import exposes its target as a live sheet — recurse into the CSSOM rather
