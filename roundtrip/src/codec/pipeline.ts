@@ -1,5 +1,5 @@
 import type { CodecChoice, MoshConfig } from '../types.ts'
-import { bitrateFor, encodeOptionsFor, quantizerFor, RATE_CONTROL } from '../quantizer.ts'
+import { bitrateFor, encodeOptionsFor, quantizerFor } from '../quantizer.ts'
 import { createMoshFilter, sameMoshConfig } from '../mosh.ts'
 import { shouldDropForBackpressure } from '../frameBudget.ts'
 
@@ -145,13 +145,16 @@ export function createPipeline(opts: PipelineOptions): Pipeline {
     bitrateMode: opts.bitrateMode,
   }
   /*
-   * COARSENESS AS A BITRATE (#72). When the family's dial is a starved constant bitrate and the
-   * probe actually got that mode, coarseness sets the bitrate — unless the caller pinned one.
+   * COARSENESS AS A BITRATE (#72). Whenever the probe got constant mode, coarseness sets the
+   * bitrate — unless the caller pinned one. Not only for the families whose RATE_CONTROL is
+   * 'constant': since #91 the probe takes AVC in constant mode over AV1 in anything (an encoder
+   * with no per-frame QP, e.g. software AVC), and keying this on RATE_CONTROL left that stream
+   * at a flat 200kbps with a slider that did nothing.
    * Changing it means reconfiguring the encoder, which forces a keyframe, so tune() only marks
    * it and push() applies it at most every RETARGET_MS: a dragged slider would otherwise emit a
    * keyframe per pixel of travel.
    */
-  const bitrateDial = opts.bitrateMode === 'constant' && RATE_CONTROL[opts.family] === 'constant' && opts.bitrate === undefined
+  const bitrateDial = opts.bitrateMode === 'constant' && opts.bitrate === undefined
   const targetBitrate = () => bitrateFor(coarseness, opts.width, opts.height)
   if (opts.bitrateMode !== 'quantizer') cfg.bitrate = bitrateDial ? targetBitrate() : (opts.bitrate ?? 200_000)
   encoder.configure(cfg)
