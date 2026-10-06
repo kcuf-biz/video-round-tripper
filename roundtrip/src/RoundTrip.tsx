@@ -51,7 +51,10 @@ export interface RoundTripProps {
    * frames, so it budgets tiny frames and starves itself. Independent of captureFps.
    */
   declaredFramerate?: number
-  /** 0..1 — encode below display resolution and let the canvas upscale. Cheap, very effective. */
+  /**
+   * 0..1 — encode below display resolution and let the canvas upscale. Cheaper to ENCODE; the
+   * capture still rasterizes at the live size and scales down, so the page lays out as it does live.
+   */
   encodeScale?: number
 
   /**

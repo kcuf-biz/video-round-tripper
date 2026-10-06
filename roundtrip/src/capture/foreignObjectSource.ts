@@ -117,14 +117,17 @@ export function createForeignObjectSource(
     const xml = new XMLSerializer().serializeToString(clone)
     const svg =
       /*
-       * Sized to the CONTENT RECT and viewBoxed to the element's live box, so the page is scaled
-       * into it. There was no viewBox before, which made encodeScale a crop: at 0.5 the frame
-       * held the top-left quarter of the page at 1:1 and the canvas stretched that over the
-       * whole stage (measured: a half-red, half-blue box captured solid red). At scale 1 the two
-       * sizes are equal and nothing is resampled.
+       * Sized to the element's LIVE box, and scaled down to the content rect only when drawn
+       * (below). The image document's viewport IS this svg's size, so it is what `vw`/`vh`
+       * and every @media query in the page resolve against: sizing it to the content rect (as
+       * it once was, with a viewBox doing the scaling) made encodeScale 0.5 on a 1440px window
+       * lay the clone out as a 720px viewport. The marketing page crossed its 760px phone
+       * breakpoint and captured the phone layout over the desktop page, misaligned with the
+       * DOM underneath (the author, 2026-10-02). Before THAT there was no viewBox and the scale cropped
+       * instead (a half-red, half-blue box captured solid red). Scaling in drawImage fixes both.
        */
-      `<svg xmlns="http://www.w3.org/2000/svg" width="${cw}" height="${ch}" ` +
-      `viewBox="0 0 ${liveW} ${liveH}" preserveAspectRatio="none" style="${attr(prepared.context.rootStyle)}">` +
+      `<svg xmlns="http://www.w3.org/2000/svg" width="${liveW}" height="${liveH}" ` +
+      `style="${attr(prepared.context.rootStyle)}">` +
       // extraCss last so a flattened shadow tree's rules win over anything the page declared
       // for the same host element — which is what the shadow boundary does in the live DOM.
       `<defs><style type="text/css"><![CDATA[${escapeCdata(`${css}\n${prepared.extraCss}`)}]]></style></defs>` +
@@ -158,7 +161,8 @@ export function createForeignObjectSource(
     // paints no background. The scratch canvas is opaque and would otherwise show black.
     ctx!.fillStyle = prepared.context.ground || '#fff'
     ctx!.fillRect(0, 0, w, h)
-    ctx!.drawImage(img, 0, 0, cw, ch)
+    // The image is the live size; this is where encodeScale actually scales it.
+    ctx!.drawImage(img, 0, 0, liveW, liveH, 0, 0, cw, ch)
     /*
      * The pad past the content rect (#75) repeats the content's edge rather than showing the
      * ground. The canvas never draws it, but the encoder codes it in the same blocks as the
