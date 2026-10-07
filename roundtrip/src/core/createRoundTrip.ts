@@ -5,6 +5,10 @@ import { createPipeline, type Pipeline } from '../codec/pipeline.ts'
 import { contentSize, createPacer, createRateMeter, encodeSize, isAwake, WAKE_MS } from '../frameBudget.ts'
 import { resolveDials, type CodecDials } from '../codecs.ts'
 import { ensureStyles } from './styles.ts'
+import { createFramerateNotice } from '../framerate.ts'
+
+/** Module-level so it speaks once per page, not once per controller. See framerate.ts. */
+const noticeFramerate = createFramerateNotice()
 
 /**
  * The capture -> encode -> mosh -> decode -> paint loop, with no framework in it.
@@ -35,6 +39,16 @@ export interface RoundTripDials {
   gop?: number | 'infinite'
   mosh?: MoshConfig | false
   captureFps?: number
+  /**
+   * The lie told to the rate controller: its per-frame budget is bitrate / this, while capture
+   * feeds it captureFps. Defaults to 60.
+   *
+   * BITRATE MODES ONLY (#70). Under quantizer mode — avc/hevc's default — there is no budget
+   * to divide and it does nothing; setting it there, at construction or through tune(), logs
+   * one console warning per page and is otherwise ignored. In a bitrate mode tune() applies it
+   * live, at the cost of the one keyframe any encoder reconfigure forces.
+   */
+  declaredFramerate?: number
 }
 
 export interface RoundTripCoreOptions extends RoundTripDials {
@@ -50,7 +64,6 @@ export interface RoundTripCoreOptions extends RoundTripDials {
   /** Family order to sweep when codec is 'auto'. Defaults to CODEC_PREFERENCE. */
   codecPreference?: readonly CodecFamily[]
   bitrate?: number
-  declaredFramerate?: number
   encodeScale?: number
   /** Status transitions, for whatever is drawing the host element's [data-status]. */
   onStatus?: (status: RoundTripStatus, message: string) => void
@@ -172,7 +185,6 @@ export function createRoundTrip(opts: RoundTripCoreOptions): RoundTripController
     codec = 'auto',
     codecPreference,
     bitrate,
-    declaredFramerate = 60,
     encodeScale = 1,
     onStatus,
     onCodec,
@@ -189,7 +201,9 @@ export function createRoundTrip(opts: RoundTripCoreOptions): RoundTripController
     gop: opts.gop,
     mosh: opts.mosh,
     captureFps: opts.captureFps,
+    declaredFramerate: opts.declaredFramerate,
   }
+  const framerate = () => dials.declaredFramerate ?? 60
 
   /*
    * The family the probe picked, remembered so tune() can resolve the dials against the same
@@ -257,7 +271,7 @@ export function createRoundTrip(opts: RoundTripCoreOptions): RoundTripController
       const choice = await probeCodec({
         width: enc.width,
         height: enc.height,
-        framerate: declaredFramerate,
+        framerate: framerate(),
         codec: codec === 'auto' ? undefined : codec,
         codecPreference,
         bitrate,
@@ -281,12 +295,14 @@ export function createRoundTrip(opts: RoundTripCoreOptions): RoundTripController
       // pipeline is built with can never drift apart. Once per build, like onStatus's
       // 'running', and guarded the same way.
       if (!disposed) onCodec?.(choice, resolved)
+      // Only a value the caller actually stated; the default is not theirs to be warned about.
+      if (dials.declaredFramerate !== undefined) noticeFramerate(choice)
 
       pipeline = createPipeline({
         ...choice,
         width: enc.width,
         height: enc.height,
-        declaredFramerate,
+        declaredFramerate: framerate(),
         coarseness: resolved.coarseness,
         rawQuantizer: dials.rawQuantizer,
         bitrate,
@@ -418,16 +434,19 @@ export function createRoundTrip(opts: RoundTripCoreOptions): RoundTripController
 
   return {
     tune(next) {
-      for (const key of ['coarseness', 'rawQuantizer', 'gop', 'mosh', 'captureFps'] as const) {
+      for (const key of ['coarseness', 'rawQuantizer', 'gop', 'mosh', 'captureFps', 'declaredFramerate'] as const) {
         if (key in next) (dials as Record<string, unknown>)[key] = next[key]
       }
-      if (!pipeline || !family) return
+      if (!pipeline || !family || !currentChoice) return
+      // Before the probe answers there is no mode to judge it by; the build above warns then.
+      if (next.declaredFramerate !== undefined) noticeFramerate(currentChoice)
       const resolved = resolveDials(family, dials)
       pipeline.tune({
         coarseness: resolved.coarseness,
         rawQuantizer: dials.rawQuantizer,
         gop: resolved.gop,
         mosh: resolved.mosh,
+        declaredFramerate: framerate(),
       })
     },
     report() {
