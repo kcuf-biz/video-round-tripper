@@ -37,6 +37,6 @@ export default defineConfig({
   optimizeDeps: {
     // The roundtrip package ships TypeScript source with no build step (the a source-only workspace
     // pattern). Pre-bundling it would try to treat it as a built dependency.
-    exclude: ['@video-round-tripper/roundtrip'],
+    exclude: ['@kcuf.biz/video-round-tripper'],
   },
 })

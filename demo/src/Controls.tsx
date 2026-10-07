@@ -1,4 +1,4 @@
-import type { CodecChoice, CodecDials, MoshConfig } from '@video-round-tripper/roundtrip'
+import type { CodecChoice, CodecDials, MoshConfig } from '@kcuf.biz/video-round-tripper'
 
 /**
  * What the stage reported through `onCodec`: the codec its probe picked and the dials it

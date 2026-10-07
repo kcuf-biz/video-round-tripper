@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import ReactDOM from 'react-dom/client'
-import { bitrateFor, gopFor, mountRoundTrip, RATE_CONTROL, type CodecFamily, type MountedRoundTrip } from '@video-round-tripper/roundtrip'
+import { bitrateFor, gopFor, mountRoundTrip, RATE_CONTROL, type CodecFamily, type MountedRoundTrip } from '@kcuf.biz/video-round-tripper'
 import './index.css'
 
 /**

@@ -1,7 +1,14 @@
 {
-  "name": "@video-round-tripper/roundtrip",
+  "name": "@kcuf.biz/video-round-tripper",
   "private": true,
   "version": "0.1.0",
+  "description": "Round-trips a live web page through your device's video codec and paints the damage back on top.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kcuf-biz/video-round-tripper.git",
+    "directory": "roundtrip"
+  },
   "scripts": {
     "prepack": "node scripts/pack-exports.mjs apply",
     "postpack": "node scripts/pack-exports.mjs restore"
@@ -12,6 +19,7 @@
     "./core": "./src/core/index.ts"
   },
   "publishConfig": {
+    "access": "public",
     "exports": {
       ".": {
         "types": "./dist/index.d.ts",

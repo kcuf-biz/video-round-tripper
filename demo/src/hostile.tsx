@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react'
 import ReactDOM from 'react-dom/client'
-import { mountRoundTrip, type CaptureReport, type MountedRoundTrip, type RoundTripStats } from '@video-round-tripper/roundtrip'
+import { mountRoundTrip, type CaptureReport, type MountedRoundTrip, type RoundTripStats } from '@kcuf.biz/video-round-tripper'
 import './index.css'
 import './hostile.css'
 
