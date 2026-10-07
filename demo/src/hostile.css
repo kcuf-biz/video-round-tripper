@@ -176,3 +176,42 @@ html { font-size: 20px; }
   animation: rt-pseudo 3s ease-in-out infinite alternate;
 }
 @keyframes rt-pseudo { to { transform: translateX(170px); } }
+
+/* ---------------------------------------------------------------- #86, #87 */
+
+/* #86: the viewport the clone lays out against. `vw` and every @media query in the page resolve
+ * against the svg's size, so when the svg was the SCALED content rect, encodeScale 0.5 on a
+ * desktop window laid the clone out as a phone: this bar went cyan -> red and halved its share
+ * of the width, misaligned with the live DOM underneath. Judge it with ?scale=0.5. The
+ * breakpoint is 1000px so that any window from 1000 to 1999px wide crosses it at 0.5. */
+.hostile .spec-vw { padding: 14px 10px; height: 150px; box-sizing: border-box; }
+.hostile .spec-vw .vw { display: block; width: 15vw; height: 56px; background: #00e5ff; }
+.hostile .spec-vw .vw::after { content: 'wide'; display: block; padding: 6px; color: #000; font-weight: 700; }
+@media (max-width: 999px) {
+  .hostile .spec-vw .vw { background: #ff0033; }
+  .hostile .spec-vw .vw::after { content: 'narrow'; color: #fff; }
+}
+
+/* #87: a REGISTERED custom property animated on an element INSIDE the captured subtree. Chrome's
+ * getKeyframes() returns empty keyframes for it, so freezeAnimations switched the animation off
+ * without pinning anything and the clone sat at the initial value: the cone never turned in the
+ * video. inherits: false on purpose, so nothing on an ancestor can supply it. */
+@property --spec-turn { syntax: '<angle>'; initial-value: 0deg; inherits: false; }
+.hostile .spec-prop {
+  background: conic-gradient(from var(--spec-turn), #ff0033, #ffd400, #00e5ff, #2d6cdf, #ff0033);
+  animation: rt-turn 29s linear infinite;
+  animation-delay: var(--seek, 0s);
+}
+@keyframes rt-turn { to { --spec-turn: 360deg; } }
+
+/* #87: a `background` SHORTHAND holding var(), followed by a longhand of it in the same rule.
+ * Chrome keeps the shorthand's longhands as pending substitutions and, once one of them is
+ * overridden, can no longer serialize any of them: cssText reads `background-image: ;` and the
+ * stripes vanish from every capture that copies the rule by cssText. cssResources.ts falls back
+ * to the sheet's own text for that. Must show STRIPES, not the figure's grey. */
+.hostile .spec-bgvar {
+  --spec-stripes: repeating-linear-gradient(45deg, #ff0033 0 14px, #ffd400 14px 28px);
+  height: 150px;
+  background: var(--spec-stripes);
+  background-size: 80px 80px;
+}
