@@ -47,6 +47,8 @@ export interface ResourceStats {
   blockedImages: number
   /** Total inlined payload, against BYTE_BUDGET. */
   bytes: number
+  /** Document rules that lost declarations with no authored text to recover them (#87). Per CSS build. */
+  lostDeclarations: number
 }
 
 export interface ResourceCache {
@@ -97,13 +99,16 @@ export function createResourceCache(doc: Document = document): ResourceCache {
   // one in-flight fetch, not race two.
   const resources = new Map<string, Promise<string | null>>()
   const texts = new Map<string, Promise<string | null>>()
-  const stats: ResourceStats = { missingFonts: 0, blockedImages: 0, bytes: 0 }
+  const stats: ResourceStats = { missingFonts: 0, blockedImages: 0, bytes: 0, lostDeclarations: 0 }
 
   const cache: ResourceCache = {
     css() {
       // State selectors are rewritten ONCE, here, with the blob: the rewrite is text-only and
       // the per-frame half is just stamping attributes. See interactionState.ts.
-      if (!pending) pending = collectCss(doc, cache).then((css) => STATE_BASE_CSS + rewriteStateRules(css))
+      if (!pending) {
+        stats.lostDeclarations = 0
+        pending = collectCss(doc, cache).then((css) => STATE_BASE_CSS + rewriteStateRules(css))
+      }
       return pending
     },
 
@@ -294,5 +299,6 @@ export async function prepareClone(
 
   report.missingFonts = cache.stats.missingFonts
   report.blockedImages += cache.stats.blockedImages
+  report.lostDeclarations += cache.stats.lostDeclarations
   return { extraCss, context, report }
 }

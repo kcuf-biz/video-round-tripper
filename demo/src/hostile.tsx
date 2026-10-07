@@ -84,8 +84,41 @@ class ShadowAnimSpecimen extends HTMLElement {
   }
 }
 
+/**
+ * #94: the #87 serialization hole, inside a shadow root. `background: var(--x)` then
+ * `background-size` in one rule reads back from the CSSOM as `background-image: ;`, and shadow
+ * CSS is rewritten rule by rule from the CSSOM. Three cells: the lossy rule at the top level of
+ * a shadow <style>, the same inside @media, and the same in an adopted sheet. The first two
+ * must show STRIPES (shadowDom.ts falls back to the <style>'s text per rule). The third is the
+ * known gap -- a constructed sheet keeps no source text -- and is EXPECTED GREY in the video,
+ * counted as `lost decls`.
+ */
+class ShadowBgVarSpecimen extends HTMLElement {
+  connectedCallback() {
+    if (this.shadowRoot) return
+    const root = this.attachShadow({ mode: 'open' })
+    root.innerHTML = `
+      <style>
+        :host { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; height: 150px; }
+        :host > div { --s: repeating-linear-gradient(45deg, #ff0033 0 14px, #ffd400 14px 28px); }
+        .top { background: var(--s); background-size: 80px 80px; }
+        @media (min-width: 1px) {
+          .media { background: var(--s); background-size: 80px 80px; }
+        }
+      </style>
+      <div class="top"></div><div class="media"></div><div class="adopted"></div>`
+    const sheet = new CSSStyleSheet()
+    sheet.replaceSync(
+      '.adopted { --a: repeating-linear-gradient(45deg, #00e5ff 0 14px, #2d6cdf 14px 28px);' +
+        ' background: var(--a); background-size: 80px 80px; }',
+    )
+    root.adoptedStyleSheets = [sheet]
+  }
+}
+
 if (!customElements.get('shadow-specimen')) customElements.define('shadow-specimen', ShadowSpecimen)
 if (!customElements.get('shadow-anim-specimen')) customElements.define('shadow-anim-specimen', ShadowAnimSpecimen)
+if (!customElements.get('shadow-bgvar-specimen')) customElements.define('shadow-bgvar-specimen', ShadowBgVarSpecimen)
 if (!customElements.get('closed-specimen')) customElements.define('closed-specimen', ClosedSpecimen)
 
 declare module 'react' {
@@ -100,6 +133,7 @@ declare module 'react' {
       'shadow-specimen': { class?: string; children?: React.ReactNode }
       'closed-specimen': { class?: string }
       'shadow-anim-specimen': Record<string, never>
+      'shadow-bgvar-specimen': Record<string, never>
     }
   }
 }
@@ -335,6 +369,10 @@ function Specimens() {
           <div className="spec-bgvar" />
         </Figure>
 
+        <Figure id="shadow-bg-var" label="same, in a shadow root: <style> top, <style> @media — stripes; adopted — known skip, EXPECTED GREY, counted">
+          <shadow-bgvar-specimen />
+        </Figure>
+
         {/*
           #62: every one of these, alone, used to lose the WHOLE frame ("The source image
           cannot be decoded.") — a comment with a double hyphen, Alpine's @click and :class,
@@ -499,7 +537,8 @@ missing fonts    ${rep.missingFonts}
 closed roots     ${rep.closedShadowRoots}
 iframes          ${rep.iframes}
 broken refs      ${rep.brokenReferences}
-ancestor bg img  ${rep.ancestorBackgroundImages}`
+ancestor bg img  ${rep.ancestorBackgroundImages}
+lost decls       ${rep.lostDeclarations}`
           : 'no frame captured yet'}
       </pre>
       <button onClick={read}>re-read</button>
