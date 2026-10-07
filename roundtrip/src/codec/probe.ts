@@ -62,44 +62,60 @@ export function modesFor(family: CodecFamily): Array<CodecChoice['bitrateMode']>
 
 /**
  * Find the best supported (codec, acceleration, bitrateMode) triple.
- * Quantizer mode is strongly preferred — it is the primary artifact dial and its values are
- * codec-spec-defined, so a given QP means the same thing across encoders. Starved CBR is the
- * fallback only when no quantizer-capable config exists.
+ *
+ * FAMILY FIRST, then each family's own mode order (#91). Every mode of a preferred family is
+ * tried before any mode of the next one, so AVC-in-constant beats AV1-in-anything.
+ *
+ * This used to be the other way round — rank r meant "each family's r-th mode" — on the theory
+ * that quantizer mode was the portable dial and worth more than the family. #72 took that
+ * theory apart: AV1/VP9's quantizer cannot make them heavy, so their first choice is already a
+ * starved constant bitrate, and "quantizer first" only ever meant "AVC/HEVC in quantizer". What
+ * the rank order did in practice was hand the stage to AV1 whenever AVC had lost quantizer mode
+ * — exactly the environment of a software-only AVC encoder (no VideoToolbox, e.g. headless
+ * Chrome), which supports CBR but not per-frame QP. The family is what decides the look: AVC
+ * is the one that moshes into the classic smear (see codecs.ts), AV1 gives a stutter at best,
+ * and CODEC_PREFERENCE exists so the classic look wins whenever it is available in ANY mode.
+ * The mode is a calibration detail by comparison; a constant-mode AVC still gets a working dial
+ * because the pipeline turns coarseness into a bitrate for any constant-mode stream.
+ *
+ * Within a family, mode before profile/level string: every string is tried in the family's
+ * first mode before any string in its second.
  */
 export async function probeCodec(opts: ProbeOptions): Promise<CodecChoice | null> {
   const check: ConfigSupportFn =
     opts.isConfigSupported ??
     ((cfg) => VideoEncoder.isConfigSupported(cfg) as Promise<{ supported?: boolean }>)
 
-  const codecs = candidatesFor(opts)
+  // Group the candidate strings by family, keeping their order. A raw codec string is a
+  // family of one.
+  const byFamily = new Map<CodecFamily, string[]>()
+  for (const codec of candidatesFor(opts)) {
+    const family = familyOf(codec)
+    byFamily.set(family, [...(byFamily.get(family) ?? []), codec])
+  }
 
-  /*
-   * Rank r means "each codec's r-th choice of mode", so codec preference still decides between
-   * families at the same rank — AVC-in-quantizer still beats AV1 in anything. What changed
-   * (#72) is that AV1 and VP9 rank CONSTANT first: Chrome's quantizer mode cannot make them
-   * heavy, a starved bitrate can. See RATE_CONTROL in quantizer.ts.
-   */
-  for (let rank = 0; rank < 3; rank++) {
-    for (const codec of codecs) {
-      const bitrateMode = modesFor(familyOf(codec))[rank]!
-      for (const hardwareAcceleration of ACCEL) {
-        const cfg: VideoEncoderConfig = {
-          codec,
-          width: opts.width,
-          height: opts.height,
-          framerate: opts.framerate,
-          latencyMode: 'realtime',
-          hardwareAcceleration,
-          bitrateMode,
+  for (const [family, codecs] of byFamily) {
+    for (const bitrateMode of modesFor(family)) {
+      for (const codec of codecs) {
+        for (const hardwareAcceleration of ACCEL) {
+          const cfg: VideoEncoderConfig = {
+            codec,
+            width: opts.width,
+            height: opts.height,
+            framerate: opts.framerate,
+            latencyMode: 'realtime',
+            hardwareAcceleration,
+            bitrateMode,
+          }
+          if (bitrateMode !== 'quantizer') cfg.bitrate = opts.bitrate ?? 200_000
+          let ok = false
+          try {
+            ok = (await check(cfg)).supported === true
+          } catch {
+            ok = false
+          }
+          if (ok) return { codec, family, hardwareAcceleration, bitrateMode }
         }
-        if (bitrateMode !== 'quantizer') cfg.bitrate = opts.bitrate ?? 200_000
-        let ok = false
-        try {
-          ok = (await check(cfg)).supported === true
-        } catch {
-          ok = false
-        }
-        if (ok) return { codec, family: familyOf(codec), hardwareAcceleration, bitrateMode }
       }
     }
   }

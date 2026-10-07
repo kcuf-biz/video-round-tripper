@@ -69,6 +69,38 @@ describe('probeCodec', () => {
     )
   })
 
+  it('takes AVC in constant mode over AV1 in any mode: family first, then mode (#91)', async () => {
+    // A software-only AVC encoder (headless Chrome, no VideoToolbox) has CBR but no per-frame
+    // QP. Ranking by mode first handed that machine to AV1, the family that cannot mosh.
+    const seen: string[] = []
+    const noAvcQuantizer: ConfigSupportFn = async (cfg) => {
+      seen.push(`${cfg.codec}:${cfg.bitrateMode}`)
+      if (cfg.codec.startsWith('avc1')) return { supported: cfg.bitrateMode === 'constant' }
+      if (cfg.codec.startsWith('av01')) return { supported: cfg.bitrateMode !== 'variable' }
+      return { supported: false }
+    }
+    const choice = await probeCodec({ ...base, isConfigSupported: noAvcQuantizer })
+    expect(choice).toEqual(expect.objectContaining({ family: 'avc', bitrateMode: 'constant' }))
+    // ...and it got there without asking about AV1 at all.
+    expect(seen.some((s) => s.startsWith('av01'))).toBe(false)
+  })
+
+  it("keeps each family's own mode order inside the family sweep", async () => {
+    // Every AVC string in quantizer mode before any AVC string in constant.
+    const seen: string[] = []
+    await probeCodec({
+      ...base,
+      isConfigSupported: async (cfg) => {
+        if (cfg.codec.startsWith('avc1')) seen.push(cfg.bitrateMode!)
+        return { supported: false }
+      },
+    })
+    const firstConstant = seen.indexOf('constant')
+    expect(firstConstant).toBeGreaterThan(0)
+    expect(seen.slice(0, firstConstant).every((m) => m === 'quantizer')).toBe(true)
+    expect(seen.lastIndexOf('quantizer')).toBeLessThan(firstConstant)
+  })
+
   it('gives AV1 and VP9 a constant bitrate first, because their quantizer cannot get heavy (#72)', async () => {
     for (const codec of ['av1', 'vp9']) {
       const choice = await probeCodec({ ...base, codec, isConfigSupported: spikeMachine })
