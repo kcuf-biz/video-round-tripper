@@ -155,12 +155,12 @@ served over plain `http://` (WebCodecs is a secure-context API — `VideoEncoder
 |---|---|
 | `coarseness` | 0–1. A spectrum of presets configured for each codec with some combination of the below props. Higher makes the effect stronger. Mapped per codec — see `quantizer.ts`. |
 | `encodeScale` | 0–1. Encode below display resolution and let the canvas upscale. Very effective; it makes encoding cheaper, not capture. |
-| `gop` | `'infinite'` **G**roup **O**f **P**ictures; set your GOP length. GOP can be thought of as how long between keyframes, so with mosh enabled longer GOPs produce more artifacting before there's a chance for the image to fix itself. |
+| `gop` | Frames between keyframes, or `'infinite'` for none after the first. **G**roup **O**f **P**ictures. With mosh enabled, longer GOPs produce more artifacting before there's a chance for the image to fix itself. Defaults to 20 on AVC/HEVC; on AV1/VP9 it follows `coarseness`. |
 | `mosh` | Good old fashioned datamoshing. Drops keyframe chunks *between* encoder and decoder, so P frames apply to a stale reference. `keepEveryNthKeyframe` lets one back through on a rhythm, which is the only thing that clears the bloom on AVC/HEVC — their decoders survive the drop instead of dying and triggering the pipeline's recovery keyframe. |
-| `captureFps` | The frame rate at which to capture the page |
+| `captureFps` | The frame rate at which to capture the page. Default 30. |
 | `declaredFramerate` | Only used in bitrate modes. The frame rate we tell the encoder to expect; if this is higher than captured FPS it will allocate fewer bits to each frame and compress them harder.  |
-| `rawQuantizer` | Set the quantizer directly, bypassing the `coarseness` setting. Does nothing on VP9/AV1 since those don't use a per-frame quantizer. | 
-| `bitrate` | Specify bitrate for constant bitrate mode (currently only AV1/VP9). |
+| `rawQuantizer` | Set the quantizer directly, bypassing the `coarseness` setting. Does nothing on VP9/AV1 by default, since those don't use a per-frame quantizer. |
+| `bitrate` | Pins the bitrate in the bitrate modes (AV1/VP9 by default). Unlike `coarseness` it doesn't scale with the window, so it looks heavier on a big screen and lighter on a small one. Changing it rebuilds the stage. |
 | `source` | Provide a custom capture source. |
 | `codec` | A family (`'avc'`), a raw codec string, or `'auto'` (default) to probe. |
 | `codecPreference` | The family order `'auto'` sweeps. Defaults to `CODEC_PREFERENCE`. |
@@ -174,7 +174,7 @@ served over plain `http://` (WebCodecs is a secure-context API — `VideoEncoder
 
 The probe order is **`avc → hevc → av1 → vp9`** and the order is not about speed (all four are realtime here: at 864x544, avc1 4.1ms/frame, vp09 4.2, av01 5.2). It's about which ones produce the more interesting effects. 
 
-AVC and HEVC tend to produce more interesting artifacts because they care less if they are broken. Rather than breaking outright on a missing keyframe, they can still continue to decode movement data from the delta frames. AV1 and VP9 are both a bit newer and a bit more robust, but this makes them handle errors more gracefully and produce less interesting artifacts. So for those we essentially do the inverse: we specify a bandwidth budget for the GOP that can't be exceeded. Since keyframes are bit-heavy, the keyframe has to undergo significant compression to fit in the budget, so the keyframes are rendered exceptionally blocky. Here's a better explanation from Claude:
+AVC and HEVC tend to produce more interesting artifacts because they care less if they are broken. Rather than breaking outright on a missing keyframe, they can still continue to decode movement data from the delta frames. AV1 and VP9 are both a bit newer and a bit more robust, but this makes them handle errors more gracefully and produce less interesting artifacts. So for those we essentially do the inverse: we starve them on a fixed bitrate. Keyframes are bit-heavy, so they come out exceptionally blocky, then the picture slowly heals until the next one. Coarseness sets how starved and how often. Here's a better explanation from Claude:
 
 > Moshing is a *decoder* phenomenon — the whole effect is what a decoder does with a delta whose keyframe it never received. H.264 and HEVC reset their entropy coder (CABAC) at every slice, so a delta that arrives after a dropped IDR still **parses** perfectly: only the reference pixels are wrong, the motion vectors drag stale texture around, and you get the classic smear. VP9 and AV1 instead carry backward-adapted probability contexts *across* frames, and the keyframe is what resets them — drop it and the decoder's contexts no longer match the encoder's, so the deltas are bit-level gibberish rather than wrong-but-valid pixels. VP9's decoder rejects the very first post-drop delta (0 moshed frames, software and hardware alike). AV1's hardware decoder emits one or two frames of garbage arranged in the encoder's tile grid and then errors.
 
