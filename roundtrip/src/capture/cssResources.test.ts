@@ -3,6 +3,7 @@ import {
   bytesToBase64,
   collectCssUrls,
   extractImports,
+  lostDeclarations,
   mimeFor,
   resolveCssUrl,
   rewriteCssUrls,
@@ -138,5 +139,25 @@ describe('bytesToBase64', () => {
     let plain = ''
     for (let i = 0; i < n; i++) plain += String.fromCharCode(bytes[i]!)
     expect(bytesToBase64(bytes)).toBe(btoa(plain))
+  })
+})
+
+describe('lostDeclarations', () => {
+  // A declaration block as Chrome hands it over for @position-try: length and item() work,
+  // the indexed getter does not.
+  const descriptors = (decls: Record<string, string>) => {
+    const names = Object.keys(decls)
+    return { length: names.length, item: (i: number) => names[i] ?? '', getPropertyValue: (n: string) => decls[n] ?? '' }
+  }
+  const rule = (decls: Record<string, string>) => ({ style: descriptors(decls) }) as unknown as CSSRule
+
+  it('reads declarations through item(), so a block with no indexed getter does not throw', () => {
+    expect(lostDeclarations(rule({ left: 'anchor(left)', margin: '0px' }))).toBe(false)
+  })
+  it('still finds an emptied longhand', () => {
+    expect(lostDeclarations(rule({ 'background-image': '', 'background-size': '8px' }))).toBe(true)
+  })
+  it('ignores empty custom properties', () => {
+    expect(lostDeclarations(rule({ '--x': '' }))).toBe(false)
   })
 })
