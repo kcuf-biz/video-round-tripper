@@ -44,7 +44,12 @@ export interface RoundTripProps {
   coarseness?: number
   /** Bypass `coarseness` with a raw per-codec quantizer value. Advanced. */
   rawQuantizer?: number
-  /** Used only when quantizer mode is unsupported. Deliberately starved. */
+  /**
+   * Pins the bitrate in the bitrate modes: AV1/VP9's default constant bitrate, or whatever the
+   * probe fell back to when quantizer mode was unsupported. Replaces the bitrate `coarseness`
+   * would derive, which scales with the frame size; this does not. Construction-time:
+   * changing it rebuilds the pipeline.
+   */
   bitrate?: number
   /**
    * The lie. Configure the rate controller for this framerate while feeding it far fewer

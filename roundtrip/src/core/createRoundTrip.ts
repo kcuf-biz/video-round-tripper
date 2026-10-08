@@ -63,6 +63,7 @@ export interface RoundTripCoreOptions extends RoundTripDials {
   codec?: string | 'auto'
   /** Family order to sweep when codec is 'auto'. Defaults to CODEC_PREFERENCE. */
   codecPreference?: readonly CodecFamily[]
+  /** Pins the bitrate in the bitrate modes instead of deriving it from coarseness. See RoundTripProps. */
   bitrate?: number
   encodeScale?: number
   /** Status transitions, for whatever is drawing the host element's [data-status]. */
