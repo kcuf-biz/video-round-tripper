@@ -5,7 +5,7 @@ Have you ever stared at your website on screen share and thought "boy that looks
 VRT takes a live webpage, sends it through video codec, then puts it back on a canvas over top of everything on the page. It paints directly over the existing content and pointer events pass through, so your page still works the same as before. 
 
 ```tsx
-import { RoundTrip } from '@video-round-tripper/roundtrip'
+import { RoundTrip } from '@kcuf.biz/video-round-tripper'
 
 <RoundTrip>
   <YourPage />
@@ -17,19 +17,46 @@ The component works out of the can if you skip the optional configuration. It pr
 
 ## Install
 
-Not on any registry, and not going on one. Consumption is a tarball.
+```sh
+npm install @kcuf.biz/video-round-tripper
+```
+
+Or skip the install and drop it onto any page with a script tag:
+
+```html
+<script src="https://cdn.jsdelivr.net/npm/@kcuf.biz/video-round-tripper@0.1/dist/roundtrip.iife.js"></script>
+<script>
+  RoundTripCore.mountRoundTrip(document.body)
+</script>
+```
+
+React is a peer, `^18.3.1 || ^19`, and **optional**: the `./core` entry and the IIFE contain
+no React at all and typecheck with no `@types/react` installed.
+
+| entry | what it is |
+|---|---|
+| `@kcuf.biz/video-round-tripper` | the React component, plus everything below |
+| `@kcuf.biz/video-round-tripper/core` | `createRoundTrip` / `mountRoundTrip`, framework-free |
+| `@kcuf.biz/video-round-tripper/iife` | one self-contained file, global `RoundTripCore` |
+
+No CSS to import. The stylesheet is a string injected once per document as `<style data-rt>`,
+because a `.css` import is a build-tool contract and an injected `<script>` has no way to
+honour it.
+
+### From source
+
+To try unreleased changes, pack a tarball from this repo and point a project at it:
 
 ```sh
-# in this repo
-npm run pack     # -> roundtrip/video-round-tripper-roundtrip-0.1.0.tgz
+npm run pack     # -> roundtrip/kcuf.biz-video-round-tripper-0.1.0.tgz
 ```
 
 ```jsonc
 // in the consuming project's package.json
 {
   "dependencies": {
-    "@video-round-tripper/roundtrip":
-      "file:../video-round-tripper/roundtrip/video-round-tripper-roundtrip-0.1.0.tgz"
+    "@kcuf.biz/video-round-tripper":
+      "file:../video-round-tripper/roundtrip/kcuf.biz-video-round-tripper-0.1.0.tgz"
   }
 }
 ```
@@ -38,25 +65,12 @@ npm run pack     # -> roundtrip/video-round-tripper-roundtrip-0.1.0.tgz
 re-packing the same version the consumer needs `npm install --force` (or a version bump) to
 pick the new bytes up — a plain `npm install` will silently reuse the old ones.
 
-React is a peer, `^18.3.1 || ^19`, and **optional**: the `./core` entry and the IIFE contain
-no React at all and typecheck with no `@types/react` installed.
-
-| entry | what it is |
-|---|---|
-| `@video-round-tripper/roundtrip` | the React component, plus everything below |
-| `@video-round-tripper/roundtrip/core` | `createRoundTrip` / `mountRoundTrip`, framework-free |
-| `@video-round-tripper/roundtrip/iife` | one self-contained file, global `RoundTripCore` |
-
-No CSS to import. The stylesheet is a string injected once per document as `<style data-rt>`,
-because a `.css` import is a build-tool contract and an injected `<script>` has no way to
-honour it.
-
 ## Usage
 
 ### React (18 or 19)
 
 ```tsx
-import { RoundTrip } from '@video-round-tripper/roundtrip'
+import { RoundTrip } from '@kcuf.biz/video-round-tripper'
 
 export function Page() {
   return (
@@ -73,7 +87,7 @@ Give the root a bounded height (`className` + `height: 100dvh`, say) if you want
 
 ```astro
 ---
-import { RoundTrip } from '@video-round-tripper/roundtrip'
+import { RoundTrip } from '@kcuf.biz/video-round-tripper'
 ---
 <RoundTrip client:load coarseness={0.8} className="stage">
   <slot />
@@ -99,7 +113,7 @@ stylesheet, or an inline `style={{ height: '100dvh' }}` all work.
 ### A plain page, no framework
 
 ```js
-import { mountRoundTrip } from '@video-round-tripper/roundtrip/core'
+import { mountRoundTrip } from '@kcuf.biz/video-round-tripper/core'
 
 const handle = mountRoundTrip(document.querySelector('#app'), { coarseness: 0.8 })
 // handle.tune({ coarseness: 0.5 })   live dials, no rebuild
@@ -128,7 +142,8 @@ move it onto a wrapper element for the round tripper's sake.
 RoundTripCore.mountRoundTrip(document.body, {})
 ```
 
-after loading `dist/roundtrip.iife.js`. It defines the global `RoundTripCore` with the same
+after loading the IIFE (the script tag under [Install](#install), or `dist/roundtrip.iife.js` from
+the package). It defines the global `RoundTripCore` with the same
 surface as the `./core` entry. Two things will stop it and neither is worth fighting: a page
 served over plain `http://` (WebCodecs is a secure-context API — `VideoEncoder` is simply
 `undefined`) and a strict `Content-Security-Policy` that refuses the injected script or the
@@ -139,7 +154,7 @@ served over plain `http://` (WebCodecs is a secure-context API — `VideoEncoder
 | prop | what it does |
 |---|---|
 | `coarseness` | 0–1. The main control, essentially CRF but a little more than that. Mapped per codec — see `quantizer.ts`. |
-| `encodeScale` | 0–1. Encode below display resolution and let the canvas upscale. Cheap, very effective. |
+| `encodeScale` | 0–1. Encode below display resolution and let the canvas upscale. Very effective; it makes encoding cheaper, not capture. |
 | `declaredFramerate` | The lie. Tell the rate controller 60 while feeding it 6 and it starves itself. |
 | `gop` | `'infinite'` **G**roup **O**f **P**ictures; set your GOP length. GOP can be thought of as how long betweeen keyframes, so longer GOPs produce more artifacting before there's a chance for the image to fix itself. |
 | `mosh` | Good old fashioned datamoshing. Drops keyframe chunks *between* encoder and decoder, so P frames apply to a stale reference. `keepEveryNthKeyframe` lets one back through on a rhythm, which is the only thing that clears the bloom on AVC/HEVC — their decoders survive the drop instead of dying and triggering the pipeline's recovery keyframe. |
@@ -164,7 +179,7 @@ So the defaults differ by family, the goal being to try to get satisfying artifa
 | family | coarseness | gop | mosh |
 |---|---|---|---|
 | avc, hevc | 0.78 | 20 | drop every keyframe, keeping every 3rd — bloom, collapse, snap back |
-| av1, vp9 | 0.78 | `infinite` | off; moshing is opt-in because it does not produce the look |
+| av1, vp9 | 0.78 | follows coarseness (about 5 at 0.78) | off; moshing is opt-in because it does not produce the look |
 
 They are resolved *after* the probe, because that is the first moment the family is known. A codec string's level is derived from the coded area for the same reason: `avc1.42001f` is Baseline 3.1, caps at 921,600 px, and silently vanishes from the probe on any laptop viewport.
 
