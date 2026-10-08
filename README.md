@@ -155,9 +155,10 @@ served over plain `http://` (WebCodecs is a secure-context API — `VideoEncoder
 |---|---|
 | `coarseness` | 0–1. The main control, essentially CRF but a little more than that. Mapped per codec — see `quantizer.ts`. |
 | `encodeScale` | 0–1. Encode below display resolution and let the canvas upscale. Very effective; it makes encoding cheaper, not capture. |
-| `declaredFramerate` | The lie. Tell the rate controller 60 while feeding it 6 and it starves itself. |
-| `gop` | `'infinite'` **G**roup **O**f **P**ictures; set your GOP length. GOP can be thought of as how long betweeen keyframes, so longer GOPs produce more artifacting before there's a chance for the image to fix itself. |
+| `gop` | `'infinite'` **G**roup **O**f **P**ictures; set your GOP length. GOP can be thought of as how long between keyframes, so with mosh enabled longer GOPs produce more artifacting before there's a chance for the image to fix itself. |
 | `mosh` | Good old fashioned datamoshing. Drops keyframe chunks *between* encoder and decoder, so P frames apply to a stale reference. `keepEveryNthKeyframe` lets one back through on a rhythm, which is the only thing that clears the bloom on AVC/HEVC — their decoders survive the drop instead of dying and triggering the pipeline's recovery keyframe. |
+| `captureFps` | The frame rate at which to capture the page |
+| `declaredFramerate` | Only used in bitrate modes. The frame rate we tell the encoder to expect; if this is higher than captured FPS it will allocate fewer bits to each frame and compress them harder.  |
 | `codec` | A family (`'avc'`), a raw codec string, or `'auto'` (default) to probe. |
 | `codecPreference` | The family order `'auto'` sweeps. Defaults to `CODEC_PREFERENCE`. |
 | `captureMode` | `'continuous'` or `'on-interaction'`. |
@@ -170,7 +171,7 @@ served over plain `http://` (WebCodecs is a secure-context API — `VideoEncoder
 
 The probe order is **`avc → hevc → av1 → vp9`** and the order is not about speed (all four are realtime here: at 864x544, avc1 4.1ms/frame, vp09 4.2, av01 5.2). It's about which ones produce the more interesting effects. 
 
-AVC and HEVC tend to produce more interesting artifacts because they're a bit older. AV1 and VP9 are both a bit newer and a bit more robust, but this makes them handle errors more gracefully and produce less interesting artifacts. So for those we essentially do the inverse: we specify a bandwidth budget for the GOP that can't be exceeded. Since keyframes are bit-heavy, the keyframe has to undergo significant compression to fit in the budget, so the keyframes are rendered exceptionally blocky. Here's a better explanation from Claude:
+AVC and HEVC tend to produce more interesting artifacts because they care less if they are broken. Rather than breaking outright on a missing keyframe, they can still continue to decode movement data from the delta frames. AV1 and VP9 are both a bit newer and a bit more robust, but this makes them handle errors more gracefully and produce less interesting artifacts. So for those we essentially do the inverse: we specify a bandwidth budget for the GOP that can't be exceeded. Since keyframes are bit-heavy, the keyframe has to undergo significant compression to fit in the budget, so the keyframes are rendered exceptionally blocky. Here's a better explanation from Claude:
 
 > Moshing is a *decoder* phenomenon — the whole effect is what a decoder does with a delta whose keyframe it never received. H.264 and HEVC reset their entropy coder (CABAC) at every slice, so a delta that arrives after a dropped IDR still **parses** perfectly: only the reference pixels are wrong, the motion vectors drag stale texture around, and you get the classic smear. VP9 and AV1 instead carry backward-adapted probability contexts *across* frames, and the keyframe is what resets them — drop it and the decoder's contexts no longer match the encoder's, so the deltas are bit-level gibberish rather than wrong-but-valid pixels. VP9's decoder rejects the very first post-drop delta (0 moshed frames, software and hardware alike). AV1's hardware decoder emits one or two frames of garbage arranged in the encoder's tile grid and then errors.
 
