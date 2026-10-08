@@ -17,6 +17,7 @@
     "serve:site:tailnet:off": "tailscale serve --https=8455 off",
     "build": "npm run build -w demo",
     "build:site": "npm run build -w site",
+    "deploy:site": "bash scripts/deploy-site.sh",
     "build:lib": "vite build -c roundtrip/vite.config.ts && vite build -c roundtrip/vite.iife.config.ts && tsc -p roundtrip/tsconfig.build.json && node roundtrip/scripts/dts-extensions.mjs",
     "pack": "npm run build:lib && npm pack -w roundtrip --pack-destination roundtrip",
     "preview": "npm run preview -w demo",
