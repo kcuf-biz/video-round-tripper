@@ -135,7 +135,7 @@ size its `rem`s mean — and the ground it sits on, `body`'s or `html`'s backgro
 is carried into the capture. Style the page on `body` the ordinary way; there is no need to
 move it onto a wrapper element for the round tripper's sake.
 
-### Injecting into a page you do not own
+### Using it on someone else's page
 
 ```js
 // paste into the console, or inject as a <script>
@@ -153,12 +153,15 @@ served over plain `http://` (WebCodecs is a secure-context API — `VideoEncoder
 
 | prop | what it does |
 |---|---|
-| `coarseness` | 0–1. The main control, essentially CRF but a little more than that. Mapped per codec — see `quantizer.ts`. |
+| `coarseness` | 0–1. A spectrum of presets configured for each codec with some combination of the below props. Higher makes the effect stronger. Mapped per codec — see `quantizer.ts`. |
 | `encodeScale` | 0–1. Encode below display resolution and let the canvas upscale. Very effective; it makes encoding cheaper, not capture. |
 | `gop` | `'infinite'` **G**roup **O**f **P**ictures; set your GOP length. GOP can be thought of as how long between keyframes, so with mosh enabled longer GOPs produce more artifacting before there's a chance for the image to fix itself. |
 | `mosh` | Good old fashioned datamoshing. Drops keyframe chunks *between* encoder and decoder, so P frames apply to a stale reference. `keepEveryNthKeyframe` lets one back through on a rhythm, which is the only thing that clears the bloom on AVC/HEVC — their decoders survive the drop instead of dying and triggering the pipeline's recovery keyframe. |
 | `captureFps` | The frame rate at which to capture the page |
 | `declaredFramerate` | Only used in bitrate modes. The frame rate we tell the encoder to expect; if this is higher than captured FPS it will allocate fewer bits to each frame and compress them harder.  |
+| `rawQuantizer` | Set the quantizer directly, bypassing the `coarseness` setting. Does nothing on VP9/AV1 since those don't use a per-frame quantizer. | 
+| `bitrate` | Specify bitrate for constant bitrate mode (currently only AV1/VP9). |
+| `source` | Provide a custom capture source. |
 | `codec` | A family (`'avc'`), a raw codec string, or `'auto'` (default) to probe. |
 | `codecPreference` | The family order `'auto'` sweeps. Defaults to `CODEC_PREFERENCE`. |
 | `captureMode` | `'continuous'` or `'on-interaction'`. |
