@@ -263,8 +263,17 @@ export function createRoundTrip(opts: RoundTripCoreOptions): RoundTripController
     let inFlight = false
     let detachWake: (() => void) | undefined
 
+    // The status line only has room for the message, which on its own can be untraceable
+    // ("Cannot read properties of undefined (reading 'startsWith')" took a stack from a
+    // special build to find). So the whole error goes to the console as well, once per distinct
+    // message per build: a capture failure repeats every frame and would flood it.
+    const logged = new Set<string>()
     const fail = (e: Error) => {
       if (cancelled) return
+      if (!logged.has(e.message)) {
+        logged.add(e.message)
+        console.error('[round-tripper]', e)
+      }
       setStatus('error', e.message)
     }
 
