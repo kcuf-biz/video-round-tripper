@@ -1,5 +1,5 @@
 import type { CodecChoice, MoshConfig } from '../types.ts'
-import { bitrateFor, encodeOptionsFor, quantizerFor } from '../quantizer.ts'
+import { bitrateFor, encodeOptionsFor, quantizerFor, RATE_CONTROL } from '../quantizer.ts'
 import { createMoshFilter, sameMoshConfig } from '../mosh.ts'
 import { shouldDropForBackpressure } from '../frameBudget.ts'
 import { framerateApplies } from '../framerate.ts'
@@ -152,23 +152,24 @@ export function createPipeline(opts: PipelineOptions): Pipeline {
     bitrateMode: opts.bitrateMode,
   }
   /*
-   * COARSENESS AS A BITRATE (#72). Whenever the probe got constant mode, coarseness sets the
-   * bitrate — unless the caller pinned one. Not only for the families whose RATE_CONTROL is
-   * 'constant': since #91 the probe takes AVC in constant mode over AV1 in anything (an encoder
-   * with no per-frame QP, e.g. software AVC), and keying this on RATE_CONTROL left that stream
-   * at a flat 200kbps with a slider that did nothing.
-   * Since the starvation guard, the bitrate dial covers every unpinned bitrate-mode stream
-   * (variable included, which used to sit at a flat 200kbps), multiplied by the learned boost.
+   * COARSENESS AS A BITRATE (#72), for AV1 and VP9 only: the families whose RATE_CONTROL is
+   * 'constant', because their encoders answer a starved rate with genuinely degraded frames.
+   * #91 extended it to any constant-mode stream, which put AVC in a bitrate mode (a device with
+   * no quantizer mode) at ~50kbps at phone size, and hardware AVC answers that by SKIPPING
+   * frames: one painted frame every 2-3s on the author's iPhone. It never got uglier, only slower. So
+   * AVC/HEVC in a bitrate mode are back at a flat 200kbps, which is what ran smoothly on that
+   * phone before #91 (the author, 2026-10-09).
    * Changing it means reconfiguring the encoder, which forces a keyframe, so tune() only marks
    * it and push() applies it at most every RETARGET_MS: a dragged slider would otherwise emit a
    * keyframe per pixel of travel.
    */
-  const bitrateDial = opts.bitrateMode === 'constant' && opts.bitrate === undefined
+  const bitrateDial =
+    opts.bitrateMode === 'constant' && RATE_CONTROL[opts.family] === 'constant' && opts.bitrate === undefined
   /*
-   * STARVATION BACK-OFF (starvation.ts). In a bitrate mode with no bitrate pinned by the caller,
-   * whatever we ask for is multiplied by what the guard has learned: an encoder that skips
-   * frames under a tiny budget (Apple's hardware AVC) is given more until it stops skipping. A
-   * pinned bitrate is the caller's to keep, starving or not.
+   * STARVATION BACK-OFF (starvation.ts), a safety net. In a bitrate mode with no bitrate pinned
+   * by the caller, whatever we ask for is multiplied by what the guard has learned: an encoder
+   * that still skips frames at the rate above is given more until it stops. A pinned bitrate is
+   * the caller's to keep, starving or not.
    */
   const guarded = opts.bitrateMode !== 'quantizer' && opts.bitrate === undefined
   const starvation = createStarvationGuard({ initialBoost: guarded ? opts.bitrateBoost : 1 })

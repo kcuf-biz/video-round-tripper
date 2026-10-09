@@ -38,6 +38,11 @@ export interface ProbeOptions {
   /** Family order to sweep. Defaults to CODEC_PREFERENCE. */
   codecPreference?: readonly CodecFamily[]
   bitrate?: number
+  /**
+   * Family first: AVC (then HEVC) in ANY mode before anything else, for when moshing is
+   * wanted, since only they bloom. Off, the probe goes for the look first; see probeCodec.
+   */
+  preferMoshable?: boolean
   /** Injected for tests; defaults to the real VideoEncoder. */
   isConfigSupported?: ConfigSupportFn
 }
@@ -63,20 +68,22 @@ export function modesFor(family: CodecFamily): Array<CodecChoice['bitrateMode']>
 /**
  * Find the best supported (codec, acceleration, bitrateMode) triple.
  *
- * FAMILY FIRST, then each family's own mode order (#91). Every mode of a preferred family is
- * tried before any mode of the next one, so AVC-in-constant beats AV1-in-anything.
+ * TWO STRATEGIES (2026-10-09).
  *
- * This used to be the other way round — rank r meant "each family's r-th mode" — on the theory
- * that quantizer mode was the portable dial and worth more than the family. #72 took that
- * theory apart: AV1/VP9's quantizer cannot make them heavy, so their first choice is already a
- * starved constant bitrate, and "quantizer first" only ever meant "AVC/HEVC in quantizer". What
- * the rank order did in practice was hand the stage to AV1 whenever AVC had lost quantizer mode
- * — exactly the environment of a software-only AVC encoder (no VideoToolbox, e.g. headless
- * Chrome), which supports CBR but not per-frame QP. The family is what decides the look: AVC
- * is the one that moshes into the classic smear (see codecs.ts), AV1 gives a stutter at best,
- * and CODEC_PREFERENCE exists so the classic look wins whenever it is available in ANY mode.
- * The mode is a calibration detail by comparison; a constant-mode AVC still gets a working dial
- * because the pipeline turns coarseness into a bitrate for any constant-mode stream.
+ * LOOK FIRST, the default. Every family in its OWN best mode first, in preference order: AVC and
+ * HEVC with a per-frame quantizer, VP9 and AV1 in a starved constant bitrate (#72). Only then
+ * each family's other modes, family by family. So a device whose AVC has no quantizer mode
+ * (every iPhone; Safari generally) gets VP9, not AVC in a bitrate mode. That is the order
+ * before #91, and it is the right one for the look: hardware AVC in a bitrate mode does not get
+ * uglier as the budget shrinks, it SKIPS FRAMES (VideoToolbox at a coarseness-starved ~50kbps:
+ * one painted frame every 2-3s on the author's iPhone), while VP9 honours a starved rate with genuinely
+ * bad frames and never stutters.
+ *
+ * FAMILY FIRST, with `preferMoshable` (and always when the caller names one family). Every mode
+ * of a preferred family before any mode of the next, so AVC-in-a-bitrate-mode beats VP9 in
+ * anything (#91): AVC and HEVC are the families whose moshing makes the classic smear, so a
+ * caller that wants moshing takes them in whatever mode the device offers. The site turns this
+ * on with Enable Mosh.
  *
  * Within a family, mode before profile/level string: every string is tried in the family's
  * first mode before any string in its second.
@@ -94,28 +101,37 @@ export async function probeCodec(opts: ProbeOptions): Promise<CodecChoice | null
     byFamily.set(family, [...(byFamily.get(family) ?? []), codec])
   }
 
-  for (const [family, codecs] of byFamily) {
-    for (const bitrateMode of modesFor(family)) {
-      for (const codec of codecs) {
-        for (const hardwareAcceleration of ACCEL) {
-          const cfg: VideoEncoderConfig = {
-            codec,
-            width: opts.width,
-            height: opts.height,
-            framerate: opts.framerate,
-            latencyMode: 'realtime',
-            hardwareAcceleration,
-            bitrateMode,
-          }
-          if (bitrateMode !== 'quantizer') cfg.bitrate = opts.bitrate ?? 200_000
-          let ok = false
-          try {
-            ok = (await check(cfg)).supported === true
-          } catch {
-            ok = false
-          }
-          if (ok) return { codec, family, hardwareAcceleration, bitrateMode }
+  // The (family, mode) pairs to try, in order. See the two strategies above.
+  type Step = [CodecFamily, CodecChoice['bitrateMode']]
+  const families = [...byFamily.keys()]
+  const order: Step[] =
+    opts.preferMoshable || opts.codec !== undefined
+      ? families.flatMap((f) => modesFor(f).map((m): Step => [f, m]))
+      : [
+          ...families.map((f): Step => [f, modesFor(f)[0]!]),
+          ...families.flatMap((f) => modesFor(f).slice(1).map((m): Step => [f, m])),
+        ]
+
+  for (const [family, bitrateMode] of order) {
+    for (const codec of byFamily.get(family)!) {
+      for (const hardwareAcceleration of ACCEL) {
+        const cfg: VideoEncoderConfig = {
+          codec,
+          width: opts.width,
+          height: opts.height,
+          framerate: opts.framerate,
+          latencyMode: 'realtime',
+          hardwareAcceleration,
+          bitrateMode,
         }
+        if (bitrateMode !== 'quantizer') cfg.bitrate = opts.bitrate ?? 200_000
+        let ok = false
+        try {
+          ok = (await check(cfg)).supported === true
+        } catch {
+          ok = false
+        }
+        if (ok) return { codec, family, hardwareAcceleration, bitrateMode }
       }
     }
   }

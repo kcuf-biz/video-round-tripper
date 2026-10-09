@@ -63,6 +63,12 @@ export interface RoundTripCoreOptions extends RoundTripDials {
   codec?: string | 'auto'
   /** Family order to sweep when codec is 'auto'. Defaults to CODEC_PREFERENCE. */
   codecPreference?: readonly CodecFamily[]
+  /**
+   * Probe for a family that moshes (AVC, then HEVC) in ANY mode before the look-first order, which
+   * otherwise prefers VP9 on a device whose AVC has no quantizer mode. Turn it on with mosh.
+   * Construction-time: changing it rebuilds.
+   */
+  preferMoshable?: boolean
   /** Pins the bitrate in the bitrate modes instead of deriving it from coarseness. See RoundTripProps. */
   bitrate?: number
   encodeScale?: number
@@ -185,6 +191,7 @@ export function createRoundTrip(opts: RoundTripCoreOptions): RoundTripController
     captureMode = 'continuous',
     codec = 'auto',
     codecPreference,
+    preferMoshable = false,
     bitrate,
     encodeScale = 1,
     onStatus,
@@ -226,25 +233,10 @@ export function createRoundTrip(opts: RoundTripCoreOptions): RoundTripController
   let builds = 0
   const paintMeter = createRateMeter()
   // What the starvation guard learned, per encoder: family + acceleration + mode. NOT the codec
-  // string, whose AVC level follows the frame area, so the half-size rebuild below would look
-  // like a new encoder and starve all over again (measured: +2s to its first frame).
+  // string, whose AVC level follows the frame area, so a resize would look like a new encoder
+  // and starve all over again.
   const boostKey = (c: CodecChoice) => `${c.family}|${c.hardwareAcceleration}|${c.bitrateMode}`
   let learnedBoost: { key: string; boost: number } = { key: '', boost: 1 }
-  /*
-   * STARVED_SCALE. Raising the bitrate makes a frame-skipping encoder paint again, but not look
-   * bad again: Apple's hardware AVC will not make a frame smaller than ~1.5KB at 394x852 (1,702
-   * bytes/frame once flowing, against 939 for the quantizer path at coarseness 0.8), so at full
-   * size it reads too clean. Fewer pixels is the lever it still honours: at half size it flows
-   * at ~600-850 bytes/frame and the upscale makes the blocks bigger. So once the guard has had to
-   * reach STARVED_AT (a clear skipper, not noise), the stage is rebuilt once at half its encode
-   * size, and stays there for this controller's later rebuilds. Compared by screenshot at phone
-   * size (quantizer path, then this encoder at 1.0, 0.7 and 0.5): only 0.5 broke up like the
-   * quantizer path did.
-   */
-  const STARVED_AT = 4
-  const STARVED_SCALE = 0.5
-  let starved = false
-  const effectiveScale = () => encodeScale * (starved ? STARVED_SCALE : 1)
 
   const setStatus = (status: RoundTripStatus, message: string) => {
     if (disposed) return
@@ -304,6 +296,7 @@ export function createRoundTrip(opts: RoundTripCoreOptions): RoundTripController
         framerate: framerate(),
         codec: codec === 'auto' ? undefined : codec,
         codecPreference,
+        preferMoshable,
         bitrate,
       })
       if (cancelled) return
@@ -343,18 +336,6 @@ export function createRoundTrip(opts: RoundTripCoreOptions): RoundTripController
         bitrateBoost: learnedBoost.key === boostKey(choice) ? learnedBoost.boost : 1,
         onBitrateBoost: (boost) => {
           learnedBoost = { key: boostKey(choice), boost }
-          // Out of the encode path: this is called from inside push().
-          if (boost >= STARVED_AT && !starved) {
-            starved = true
-            // The coarseness bitrate scales with area, so dividing by the area ratio keeps the
-            // bitrate that was found; twice that lands where half size flows steadily (~400kbps,
-            // ~870 bytes/frame while scrolling) instead of climbing there again. It does NOT
-            // shorten the start: in constant mode VideoToolbox held a fresh session's first
-            // output for 2-3s in the stage at every rate tried, up to 3.2Mbps (not reproduced in
-            // isolation; cause not found).
-            learnedBoost = { key: learnedBoost.key, boost: (2 * boost) / (STARVED_SCALE * STARVED_SCALE) }
-            window.setTimeout(rebuild, 0)
-          }
         },
         onPicture: (frame) => {
           try {
@@ -475,7 +456,7 @@ export function createRoundTrip(opts: RoundTripCoreOptions): RoundTripController
   function rebuild(): void {
     if (disposed || !size) return
     stop()
-    start(encodeSize(size.w, size.h, effectiveScale()), contentSize(size.w, size.h, effectiveScale()))
+    start(encodeSize(size.w, size.h, encodeScale), contentSize(size.w, size.h, encodeScale))
   }
   const ro = new ResizeObserver(() => {
     window.clearTimeout(debounce)

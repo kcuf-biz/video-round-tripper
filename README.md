@@ -164,6 +164,7 @@ served over plain `http://` (WebCodecs is a secure-context API — `VideoEncoder
 | `source` | Provide a custom capture source. |
 | `codec` | A family (`'avc'`), a raw codec string, or `'auto'` (default) to probe. |
 | `codecPreference` | The family order `'auto'` sweeps. Defaults to `CODEC_PREFERENCE`. |
+| `preferMoshable` | Take H.264/HEVC in any mode the device offers, before the look-first order. Turn it on with `mosh`. Changing it rebuilds the stage. |
 | `captureMode` | `'continuous'` or `'on-interaction'`. |
 | `disabled` | Bypass. Defaults to on under `prefers-reduced-motion`. |
 | `onCodec` | Called once per pipeline build with the codec the probe picked and the dials resolved against it — the only way to read the values a left-undefined dial landed on. |
@@ -172,7 +173,9 @@ served over plain `http://` (WebCodecs is a secure-context API — `VideoEncoder
 
 ## Per-codec defaults, and the codec order
 
-The probe order is **`avc → hevc → av1 → vp9`** and the order is not about speed (all four are realtime here: at 864x544, avc1 4.1ms/frame, vp09 4.2, av01 5.2). It's about which ones produce the more interesting effects. 
+The probe order is **`avc → hevc → vp9 → av1`** and the order is not about speed (all four are realtime here: at 864x544, avc1 4.1ms/frame, vp09 4.2, av01 5.2). It's about which ones produce the more interesting effects. 
+
+Each codec is first tried in the mode it looks best in: AVC and HEVC with a fixed quantizer, VP9 and AV1 on a starved bitrate. So on a device whose H.264 can't take a quantizer (iPhones, Safari in general) you get VP9, which stays smooth and crunchy, rather than an H.264 that stutters. Pass `preferMoshable` to ask for H.264 in whatever mode the device has instead, which is what you want with `mosh` on.
 
 AVC and HEVC tend to produce more interesting artifacts because they care less if they are broken. Rather than breaking outright on a missing keyframe, they can still continue to decode movement data from the delta frames. AV1 and VP9 are both a bit newer and a bit more robust, but this makes them handle errors more gracefully and produce less interesting artifacts. So for those we essentially do the inverse: we starve them on a fixed bitrate. Keyframes are bit-heavy, so they come out exceptionally blocky, then the picture slowly heals until the next one. Coarseness sets how starved and how often. Here's a better explanation from Claude:
 

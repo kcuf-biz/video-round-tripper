@@ -33,7 +33,7 @@ describe('probeCodec', () => {
     // isConfigSupported return false for av01 and vp09 with no indication why — so with AVC
     // and HEVC gone, a probe that pinned it would find nothing at all.
     const choice = await probeCodec({ ...base, isConfigSupported: softwareOnly })
-    expect(choice!.codec).toBe('av01.0.04M.08')
+    expect(choice!.family).toBe('vp9')
     expect(choice!.hardwareAcceleration).not.toBe('prefer-hardware')
   })
 
@@ -69,17 +69,27 @@ describe('probeCodec', () => {
     )
   })
 
-  it('takes AVC in constant mode over AV1 in any mode: family first, then mode (#91)', async () => {
-    // A software-only AVC encoder (headless Chrome, no VideoToolbox) has CBR but no per-frame
-    // QP. Ranking by mode first handed that machine to AV1, the family that cannot mosh.
+  // A device whose AVC has CBR but no per-frame QP: every iPhone, software AVC generally.
+  const noAvcQuantizer = (seen: string[]): ConfigSupportFn => async (cfg) => {
+    seen.push(`${cfg.codec}:${cfg.bitrateMode}`)
+    if (cfg.codec.startsWith('avc1')) return { supported: cfg.bitrateMode === 'constant' }
+    if (cfg.codec.startsWith('av01')) return { supported: cfg.bitrateMode !== 'variable' }
+    return { supported: false }
+  }
+
+  it('looks first by default: without AVC quantizer, AV1 in its own mode beats AVC in a bitrate mode', async () => {
+    // Hardware AVC in a bitrate mode skips frames instead of degrading them (one paint every
+    // 2-3s on the author's iPhone), so the default goes for a family in its own best mode first.
     const seen: string[] = []
-    const noAvcQuantizer: ConfigSupportFn = async (cfg) => {
-      seen.push(`${cfg.codec}:${cfg.bitrateMode}`)
-      if (cfg.codec.startsWith('avc1')) return { supported: cfg.bitrateMode === 'constant' }
-      if (cfg.codec.startsWith('av01')) return { supported: cfg.bitrateMode !== 'variable' }
-      return { supported: false }
-    }
-    const choice = await probeCodec({ ...base, isConfigSupported: noAvcQuantizer })
+    const choice = await probeCodec({ ...base, isConfigSupported: noAvcQuantizer(seen) })
+    expect(choice).toEqual(expect.objectContaining({ family: 'av1', bitrateMode: 'constant' }))
+    // ...and AVC was only ever asked about in quantizer mode.
+    expect(seen.filter((s) => s.startsWith('avc1')).every((s) => s.endsWith(':quantizer'))).toBe(true)
+  })
+
+  it('takes AVC in a bitrate mode over AV1 in anything when moshing is preferred (#91)', async () => {
+    const seen: string[] = []
+    const choice = await probeCodec({ ...base, preferMoshable: true, isConfigSupported: noAvcQuantizer(seen) })
     expect(choice).toEqual(expect.objectContaining({ family: 'avc', bitrateMode: 'constant' }))
     // ...and it got there without asking about AV1 at all.
     expect(seen.some((s) => s.startsWith('av01'))).toBe(false)
