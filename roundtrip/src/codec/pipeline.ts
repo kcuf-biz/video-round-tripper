@@ -3,6 +3,7 @@ import { bitrateFor, encodeOptionsFor, quantizerFor } from '../quantizer.ts'
 import { createMoshFilter, sameMoshConfig } from '../mosh.ts'
 import { shouldDropForBackpressure } from '../frameBudget.ts'
 import { framerateApplies } from '../framerate.ts'
+import { createStarvationGuard } from '../starvation.ts'
 
 /**
  * Encoder -> mosh filter -> decoder, as one unit.
@@ -25,6 +26,10 @@ export interface PipelineOptions extends CodecChoice {
   bitrate?: number
   gop: number | 'infinite'
   mosh: MoshConfig | false
+  /** Bitrate multiplier an earlier build of this stage already learned (see starvation.ts). */
+  bitrateBoost?: number
+  /** Called whenever the starvation guard raises the multiplier, so a rebuild can start there. */
+  onBitrateBoost?: (boost: number) => void
   onPicture: (frame: VideoFrame) => void
   onError: (err: Error) => void
 }
@@ -97,6 +102,7 @@ export function createPipeline(opts: PipelineOptions): Pipeline {
   const encoder = new VideoEncoder({
     output: (chunk, meta) => {
       stats.encoded++
+      starvation.output()
       const isKey = (chunk.type as 'key' | 'delta') === 'key'
 
       let decision: 'pass' | 'drop'
@@ -151,13 +157,25 @@ export function createPipeline(opts: PipelineOptions): Pipeline {
    * 'constant': since #91 the probe takes AVC in constant mode over AV1 in anything (an encoder
    * with no per-frame QP, e.g. software AVC), and keying this on RATE_CONTROL left that stream
    * at a flat 200kbps with a slider that did nothing.
+   * Since the starvation guard, the bitrate dial covers every unpinned bitrate-mode stream
+   * (variable included, which used to sit at a flat 200kbps), multiplied by the learned boost.
    * Changing it means reconfiguring the encoder, which forces a keyframe, so tune() only marks
    * it and push() applies it at most every RETARGET_MS: a dragged slider would otherwise emit a
    * keyframe per pixel of travel.
    */
   const bitrateDial = opts.bitrateMode === 'constant' && opts.bitrate === undefined
-  const targetBitrate = () => bitrateFor(coarseness, opts.width, opts.height)
-  if (opts.bitrateMode !== 'quantizer') cfg.bitrate = bitrateDial ? targetBitrate() : (opts.bitrate ?? 200_000)
+  /*
+   * STARVATION BACK-OFF (starvation.ts). In a bitrate mode with no bitrate pinned by the caller,
+   * whatever we ask for is multiplied by what the guard has learned: an encoder that skips
+   * frames under a tiny budget (Apple's hardware AVC) is given more until it stops skipping. A
+   * pinned bitrate is the caller's to keep, starving or not.
+   */
+  const guarded = opts.bitrateMode !== 'quantizer' && opts.bitrate === undefined
+  const starvation = createStarvationGuard({ initialBoost: guarded ? opts.bitrateBoost : 1 })
+  let boost = starvation.boost
+  const baseBitrate = () => (bitrateDial ? bitrateFor(coarseness, opts.width, opts.height) : 200_000)
+  const targetBitrate = () => (opts.bitrate !== undefined ? opts.bitrate : Math.round(baseBitrate() * boost))
+  if (opts.bitrateMode !== 'quantizer') cfg.bitrate = targetBitrate()
   encoder.configure(cfg)
   const RETARGET_MS = 250
   let lastRetarget = 0
@@ -171,7 +189,7 @@ export function createPipeline(opts: PipelineOptions): Pipeline {
   const framerateDial = framerateApplies(opts.bitrateMode)
 
   function retarget(): void {
-    const wantBitrate = bitrateDial ? targetBitrate() : cfg.bitrate
+    const wantBitrate = guarded ? targetBitrate() : cfg.bitrate
     const wantFramerate = framerateDial ? declaredFramerate : cfg.framerate
     if (wantBitrate === cfg.bitrate && wantFramerate === cfg.framerate) return
     const now = performance.now()
@@ -202,6 +220,13 @@ export function createPipeline(opts: PipelineOptions): Pipeline {
           stats.dropped++
           return
         }
+        if (guarded) {
+          const next = starvation.check(performance.now())
+          if (next !== boost) {
+            boost = next
+            opts.onBitrateBoost?.(boost)
+          }
+        }
         retarget()
         const q = rawQuantizer ?? quantizerFor(opts.family, coarseness)
         const keyFrame = needKeyframe || wantsKeyframe(inputIndex)
@@ -210,6 +235,7 @@ export function createPipeline(opts: PipelineOptions): Pipeline {
             ? { ...encodeOptionsFor(opts.family, q), keyFrame }
             : { keyFrame }
         encoder.encode(frame, encOpts)
+        if (guarded) starvation.input(performance.now())
         if (keyFrame) needKeyframe = false
         inputIndex++
       } catch (e) {

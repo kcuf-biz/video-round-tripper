@@ -225,6 +225,9 @@ export function createRoundTrip(opts: RoundTripCoreOptions): RoundTripController
   let paintedCount = 0
   let builds = 0
   const paintMeter = createRateMeter()
+  // What the starvation guard learned, per encoder (codec + acceleration + mode). See starvation.ts.
+  const boostKey = (c: CodecChoice) => `${c.codec}|${c.hardwareAcceleration}|${c.bitrateMode}`
+  let learnedBoost: { key: string; boost: number } = { key: '', boost: 1 }
 
   const setStatus = (status: RoundTripStatus, message: string) => {
     if (disposed) return
@@ -318,6 +321,12 @@ export function createRoundTrip(opts: RoundTripCoreOptions): RoundTripController
         bitrate,
         gop: resolved.gop,
         mosh: resolved.mosh,
+        // A rebuild (resize, rotation) keeps what the last build learned about this encoder,
+        // rather than re-starving it for a few seconds to find the same floor again.
+        bitrateBoost: learnedBoost.key === boostKey(choice) ? learnedBoost.boost : 1,
+        onBitrateBoost: (boost) => {
+          learnedBoost = { key: boostKey(choice), boost }
+        },
         onPicture: (frame) => {
           try {
             if (!cancelled) {
