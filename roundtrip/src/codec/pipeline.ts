@@ -216,16 +216,22 @@ export function createPipeline(opts: PipelineOptions): Pipeline {
       try {
         // Drop rather than queue. A dropped frame widens the inter-frame delta, which makes
         // the artifacts better — the backpressure policy and the aesthetic agree here.
-        if (shouldDropForBackpressure(encoder.encodeQueueSize)) {
-          stats.dropped++
-          return
-        }
+        // The guard looks BEFORE backpressure, and a frame dropped for backpressure counts as
+        // one in with nothing out: a starving encoder holds frames, its queue fills, and every
+        // later frame is dropped here. Checked after the drop, the guard never ran until the
+        // encoder coughed up its first frame, 3.1s in (measured), which was the whole pause.
+        const now = performance.now()
         if (guarded) {
-          const next = starvation.check(performance.now())
+          const next = starvation.check(now)
           if (next !== boost) {
             boost = next
             opts.onBitrateBoost?.(boost)
           }
+        }
+        if (shouldDropForBackpressure(encoder.encodeQueueSize)) {
+          stats.dropped++
+          if (guarded) starvation.input(now)
+          return
         }
         retarget()
         const q = rawQuantizer ?? quantizerFor(opts.family, coarseness)
@@ -235,7 +241,7 @@ export function createPipeline(opts: PipelineOptions): Pipeline {
             ? { ...encodeOptionsFor(opts.family, q), keyFrame }
             : { keyFrame }
         encoder.encode(frame, encOpts)
-        if (guarded) starvation.input(performance.now())
+        if (guarded) starvation.input(now)
         if (keyFrame) needKeyframe = false
         inputIndex++
       } catch (e) {

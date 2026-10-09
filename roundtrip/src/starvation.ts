@@ -14,7 +14,8 @@
  * it returns too few, multiply the bitrate up a step and look again after a full window at the
  * new rate, until frames flow or the ceiling is reached. No device table: whatever floor an
  * encoder has is found by asking it. An encoder that keeps up never trips this, and quantizer
- * mode never consults it.
+ * mode never consults it. The core does the second half, getting the compression back: see
+ * STARVED_SCALE in createRoundTrip.ts.
  */
 
 export interface StarvationGuard {
@@ -46,7 +47,7 @@ export interface StarvationOptions {
 }
 
 export function createStarvationGuard(o: StarvationOptions = {}): StarvationGuard {
-  const windowMs = o.windowMs ?? 700
+  const windowMs = o.windowMs ?? 400
   const minRatio = o.minRatio ?? 0.5
   const minInputs = o.minInputs ?? 6
   const step = o.step ?? 2
