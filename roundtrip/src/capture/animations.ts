@@ -172,6 +172,101 @@ function addAnimations(index: AnimationIndex, all: Animation[]): void {
 }
 
 /**
+ * Something with a rule list: a stylesheet, or a rule that nests others. Duck-typed on purpose
+ * so collectKeyframeCustoms can be tested with plain objects (jsdom's CSSOM is not Chrome's).
+ */
+interface RuleLike {
+  readonly name?: unknown
+  readonly keyText?: unknown
+  readonly cssRules?: ArrayLike<RuleLike>
+  readonly style?: ArrayLike<string>
+  readonly styleSheet?: { readonly cssRules: ArrayLike<RuleLike> } | null
+}
+
+/** Custom property names each `@keyframes` rule declares, by animation name. */
+export type KeyframeCustoms = Map<string, Set<string>>
+
+/**
+ * Walk a rule list for `@keyframes` and record which custom properties each one animates.
+ *
+ * A keyframes rule is recognised by its children carrying `keyText`, not by its own shape:
+ * `@layer foo { ... }` also has a `name` and `cssRules`. Grouping rules (@media, @supports,
+ * @layer, @container, nested style rules) are recursed into, and so is an @import's sheet.
+ * Same-named rules are UNIONED rather than cascaded: an extra name only costs pinning one
+ * property at the value it already has, while a missing one is the frozen-property bug.
+ */
+export function collectKeyframeCustoms(rules: ArrayLike<RuleLike>, into: KeyframeCustoms = new Map()): KeyframeCustoms {
+  for (let i = 0; i < rules.length; i++) {
+    const rule = rules[i]!
+    if (rule.styleSheet) {
+      try {
+        collectKeyframeCustoms(rule.styleSheet.cssRules, into)
+      } catch {
+        // A cross-origin import: its keyframes stay unknown, and their animations pin everything.
+      }
+    }
+    const kids = rule.cssRules
+    if (!kids || kids.length === 0) continue
+    if (typeof rule.name === 'string' && kids[0]!.keyText !== undefined) {
+      let names = into.get(rule.name)
+      if (!names) into.set(rule.name, (names = new Set()))
+      for (let k = 0; k < kids.length; k++) {
+        const style = kids[k]!.style
+        if (!style) continue
+        for (let j = 0; j < style.length; j++) if (style[j]!.startsWith('--')) names.add(style[j]!)
+      }
+    } else collectKeyframeCustoms(kids, into)
+  }
+  return into
+}
+
+/**
+ * The custom properties a CSS animation animates, or null when its @keyframes cannot be read.
+ *
+ * WHY THIS EXISTS: getKeyframes() leaves custom properties out of a CSSAnimation's keyframes —
+ * registered or not, and alone or alongside ordinary properties. Probed in Chrome 151:
+ * `@keyframes { to { --r: 90deg; transform: rotate(10deg) } }` reports `transform` only, and a
+ * custom-property-only animation reports empty keyframes. A CSSTransition of `--r` and an
+ * element.animate() of `--r` both DO report it, so only CSS animations need this. The rule
+ * itself still has them: a CSSKeyframeRule's `style` enumerates `--r`.
+ *
+ * Lazy and per capture: the sheets are only walked the first time an animated element inside
+ * the subtree turns out to run a CSS animation, once per tree scope (the document, and each
+ * shadow root, whose own @keyframes take precedence for elements inside it). Not cached across
+ * frames, so a keyframes rule added by insertRule is seen on the next frame.
+ */
+export function createKeyframeCustomsLookup(): (animationName: string, target: Element) => ReadonlySet<string> | null {
+  const scopes = new Map<Document | ShadowRoot, KeyframeCustoms>()
+  const customsOf = (scope: Document | ShadowRoot): KeyframeCustoms => {
+    let found = scopes.get(scope)
+    if (found) return found
+    found = new Map()
+    for (const sheet of [...scope.styleSheets, ...(scope.adoptedStyleSheets ?? [])]) {
+      let rules: CSSRuleList
+      try {
+        rules = sheet.cssRules
+      } catch {
+        continue // cross-origin without CORS: unreadable, so its animations fall back to pinning all
+      }
+      collectKeyframeCustoms(rules as unknown as ArrayLike<RuleLike>, found)
+    }
+    scopes.set(scope, found)
+    return found
+  }
+  return (animationName, target) => {
+    let node: Node = target.getRootNode()
+    for (;;) {
+      if (node instanceof ShadowRoot || node instanceof Document) {
+        const hit = customsOf(node).get(animationName)
+        if (hit) return hit
+      }
+      if (!(node instanceof ShadowRoot)) return null
+      node = node.host.getRootNode()
+    }
+  }
+}
+
+/**
  * Pin every animated property to its current computed value on the clone, then stop the clone
  * animating at all.
  *
@@ -188,38 +283,56 @@ function addAnimations(index: AnimationIndex, all: Animation[]): void {
  * Transitions come through the same door — a CSSTransition's effect is a KeyframeEffect whose
  * keyframes name the transitioning property — so mid-transition state is captured as the
  * in-between value it currently has, rather than snapping to the end value.
+ *
+ * `customsOf` is per capture; prepareClone makes one and shares it across shadow recursion.
  */
-export function freezeAnimations(pairs: readonly ElementPair[], index: AnimationIndex): void {
+export function freezeAnimations(
+  pairs: readonly ElementPair[],
+  index: AnimationIndex,
+  customsOf: ReturnType<typeof createKeyframeCustomsLookup> = createKeyframeCustomsLookup(),
+): void {
   if (index.size === 0) return
+  const hasCssAnimation = typeof CSSAnimation !== 'undefined'
   for (const pair of pairs) {
     const anims = index.get(pair.src)
     if (!anims) continue
     const d = pair.dst
     if (!(d instanceof HTMLElement) && !(d instanceof SVGElement)) continue
 
-    for (const anim of anims) {
-      const effect = anim.effect as KeyframeEffect
-      for (const name of keyframePropertyNames(effect.getKeyframes() as unknown as Record<string, unknown>[])) {
-        const value = pair.cs.getPropertyValue(name)
-        if (value === '') continue
-        d.style.setProperty(name, value)
-      }
-    }
-    /*
-     * CUSTOM PROPERTIES ARE MISSING FROM getKeyframes(). Chrome returns empty keyframes for a
-     * CSS animation of a registered (@property) custom property, so the loop above never sees
-     * `--sway` or `--g3`, and the clone froze them at their initial value while everything else
-     * moved: the marketing page's background stops read 0.00 mean diff across a 40s seek in the
-     * video against 9.73 live, and its rainbows' angle sway had never moved in the video at all
-     * (the author, 2026-10-03). So every custom property on an animated element is pinned too, at its
-     * live computed value. That is exactly what the element has right now, so it is safe for
-     * inherited ones as well; and it costs nothing on elements that animate nothing.
-     */
-    for (let i = 0; i < pair.cs.length; i++) {
-      const name = pair.cs[i]!
-      if (!name.startsWith('--')) continue
+    const pin = (name: string) => {
       const value = pair.cs.getPropertyValue(name)
       if (value !== '') d.style.setProperty(name, value)
+    }
+    let pinAllCustoms = false
+    for (const anim of anims) {
+      const effect = anim.effect as KeyframeEffect
+      for (const name of keyframePropertyNames(effect.getKeyframes() as unknown as Record<string, unknown>[])) pin(name)
+      /*
+       * CUSTOM PROPERTIES ARE MISSING FROM getKeyframes() for a CSS animation (see
+       * createKeyframeCustomsLookup), so the loop above never sees `--sway` or `--g3`, and the
+       * clone froze them at their initial value while everything else moved: the marketing
+       * page's background stops read 0.00 mean diff across a 40s seek in the video against
+       * 9.73 live, and its rainbows' angle sway had never moved in the video at all (the author,
+       * 2026-10-03). So they are read off the animation's own @keyframes rule instead.
+       */
+      if (!hasCssAnimation || !(anim instanceof CSSAnimation)) continue
+      const customs = customsOf(anim.animationName, pair.src)
+      if (customs) for (const name of customs) pin(name)
+      else pinAllCustoms = true
+    }
+    /*
+     * The fallback, when the @keyframes rule could not be read (a cross-origin sheet, a scope
+     * the lookup does not reach): every custom property on the element, at its live computed
+     * value. Always correct, since it is exactly what the element has right now, but it was
+     * the unconditional behaviour until #97 measured it: on the marketing page it pinned 325
+     * properties across 18 animated elements, nearly all of them inherited design tokens,
+     * for +2-3ms median per grab and +8.5KB of markup. See notes/97-pin-cost.md.
+     */
+    if (pinAllCustoms) {
+      for (let i = 0; i < pair.cs.length; i++) {
+        const name = pair.cs[i]!
+        if (name.startsWith('--')) pin(name)
+      }
     }
 
     d.style.setProperty('animation', 'none')
