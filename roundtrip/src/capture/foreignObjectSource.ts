@@ -38,6 +38,11 @@ export interface ForeignObjectOptions {
   contentWidth?: number
   contentHeight?: number
   cache?: ResourceCache
+  /**
+   * Draw plain-box videos onto the frame after the SVG instead of embedding them (default
+   * true). False is the old path, kept for comparing the two: see VideoOverlay.
+   */
+  compositeVideo?: boolean
   /** Called when a frame fails to rasterize, rather than throwing into the render loop. */
   onError?: (err: Error) => void
 }
@@ -108,7 +113,7 @@ export function createForeignObjectSource(
      * there, and hiding it in the clone would also hand its width back to the layout.
      */
     if (element.offsetWidth === element.clientWidth + borderX(element)) clone.style.scrollbarWidth = 'none'
-    const prepared = await prepareClone(element, clone, cache)
+    const prepared = await prepareClone(element, clone, cache, { compositeVideo: opts.compositeVideo })
     last = prepared.report
     // After every pass, so what shadow flattening moved in is covered too. See wellFormed.ts:
     // one stray `<!-- -- -->` or Alpine `@click` otherwise loses the WHOLE frame, not a node.
@@ -163,6 +168,25 @@ export function createForeignObjectSource(
     ctx!.fillRect(0, 0, w, h)
     // The image is the live size; this is where encodeScale actually scales it.
     ctx!.drawImage(img, 0, 0, liveW, liveH, 0, 0, cw, ch)
+    /*
+     * Videos the clone left as empty boxes go on top, each clipped to what of it is visible.
+     * Not embedded in the SVG: on iOS Safari a per-frame nested image was missing from most
+     * frames. See VideoOverlay in replaceUnserializable.ts.
+     */
+    if (prepared.overlays.length) {
+      const origin = element.getBoundingClientRect()
+      const sx = cw / liveW
+      const sy = ch / liveH
+      for (const { video, dest, clip } of prepared.overlays) {
+        if (clip.w <= 0 || clip.h <= 0) continue
+        ctx!.save()
+        ctx!.beginPath()
+        ctx!.rect((clip.x - origin.left) * sx, (clip.y - origin.top) * sy, clip.w * sx, clip.h * sy)
+        ctx!.clip()
+        ctx!.drawImage(video, (dest.x - origin.left) * sx, (dest.y - origin.top) * sy, dest.w * sx, dest.h * sy)
+        ctx!.restore()
+      }
+    }
     /*
      * The pad past the content rect (#75) repeats the content's edge rather than showing the
      * ground. The canvas never draws it, but the encoder codes it in the same blocks as the

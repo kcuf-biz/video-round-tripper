@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>round tripper — video</title>
+    <link rel="stylesheet" href="/src/video.css" />
+  </head>
+  <body>
+    <!-- Everything inside #stage is captured. The panel after it is not. -->
+    <div id="stage">
+      <header class="sticky">sticky bar: a video under it is embedded, not composited</header>
+      <section class="row">
+        <figure>
+          <video class="clip" data-test autoplay muted loop playsinline>
+            <source src="/media/brand-loop.mov" type='video/mp4; codecs="hvc1"' />
+            <source src="/media/brand-loop.webm" type="video/webm" />
+          </video>
+          <figcaption>plain box: composited</figcaption>
+        </figure>
+        <figure>
+          <video class="clip clip--turned" autoplay muted loop playsinline>
+            <source src="/media/brand-loop.mov" type='video/mp4; codecs="hvc1"' />
+            <source src="/media/brand-loop.webm" type="video/webm" />
+          </video>
+          <figcaption>rotated: embedded (the iOS-fragile path)</figcaption>
+        </figure>
+      </section>
+      <p class="hint">Scroll this box to pass the first clip under the sticky bar.</p>
+      <div class="spacer"></div>
+    </div>
+    <aside id="panel"><pre id="readout">starting</pre></aside>
+    <script type="module" src="/src/video.ts"></script>
+  </body>
+</html>

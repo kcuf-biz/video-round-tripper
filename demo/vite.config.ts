@@ -31,6 +31,8 @@ export default defineConfig({
         hostile: new URL('./hostile/index.html', import.meta.url).pathname,
         // #72: all four codec families side by side at one coarseness, for fitting the floors.
         compare: new URL('./compare/index.html', import.meta.url).pathname,
+        // How video survives capture: the composited and embedded paths, and iOS Safari's limit.
+        video: new URL('./video/index.html', import.meta.url).pathname,
       },
     },
   },

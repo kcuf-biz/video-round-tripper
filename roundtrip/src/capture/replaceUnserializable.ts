@@ -24,6 +24,9 @@
  * video cannot be, because their whole point is that they changed. PNG is kept over a much
  * faster toDataURL('image/jpeg') because JPEG has no alpha, and a transparent canvas overlay
  * would silently acquire a black ground.
+ *
+ * Videos mostly skip all of this now: one that can be drawn as a plain box is composited onto
+ * the frame after the SVG instead (see VideoOverlay below), and only the rest are snapshotted.
  */
 
 import type { ElementPair } from './pairs.ts'
@@ -34,10 +37,10 @@ import { collectCssUrls, isFontUrl, rewriteCssUrls } from './cssResources.ts'
 /** Mid-grey: reads as a dropout, and costs the encoder almost nothing. */
 const BLOCKED_FILL = '#8a8a8a'
 
-function placeholderFor(pair: ElementPair, box: DOMRect): HTMLElement {
+function placeholderFor(pair: ElementPair, box: DOMRect, fill = BLOCKED_FILL): HTMLElement {
   const { src, dst } = pair
   const el = dst.ownerDocument.createElement('div')
-  el.setAttribute('data-rt-blocked', '')
+  if (fill === BLOCKED_FILL) el.setAttribute('data-rt-blocked', '')
   /*
    * The SOURCE's display, not a fixed one. This used to be inline-block always — right for an
    * <img> inside a line of text, wrong for the usual `img { display: block }`: an inline-block
@@ -55,7 +58,7 @@ function placeholderFor(pair: ElementPair, box: DOMRect): HTMLElement {
   el.setAttribute(
     'style',
     `${prior ? prior.replace(/;?\s*$/, ';') : ''}display:${display};vertical-align:${cs.verticalAlign};` +
-      `box-sizing:border-box;width:${box.width}px;height:${box.height}px;background:${BLOCKED_FILL}`,
+      `box-sizing:border-box;width:${box.width}px;height:${box.height}px;background:${fill}`,
   )
   return el
 }
@@ -176,13 +179,145 @@ function handleCanvas(pair: ElementPair, report: CaptureReport): void {
   dst.replaceWith(imageFrom(doc, dst, data, box))
 }
 
-function handleVideo(pair: ElementPair, report: CaptureReport): void {
+/**
+ * A video drawn straight onto the captured frame, after the SVG, instead of embedded in it.
+ * `dest` is the content box the frame is drawn into and `clip` what of it is visible, both in
+ * viewport coordinates; foreignObjectSource maps them into the frame.
+ */
+export interface VideoOverlay {
+  video: HTMLVideoElement
+  dest: { x: number; y: number; w: number; h: number }
+  clip: { x: number; y: number; w: number; h: number }
+}
+
+/*
+ * WHY COMPOSITE (2026-10-11). Embedded, a video's frame is a new PNG data: URI on every grab,
+ * and on iOS Safari the clip was missing from most captured frames: the SVG's own load resolved
+ * before the nested <img> had painted, intermittently, in a page-sized SVG (it came through in a
+ * 64px one). Decoding the same URI first did not help. Drawing the <video> onto the scratch
+ * canvas after the SVG sidesteps the nested image entirely, and skips the toDataURL that was
+ * the most expensive thing in the capture (2.6ms at 540px, 6.5ms at 1080px on an M4).
+ *
+ * The trade is z-order and effects: the overlay goes on TOP of everything, and it can only be
+ * drawn as an axis-aligned box. So it is used only for a video that nothing in its ancestry
+ * transforms, fades, filters, masks or blends, with square corners and a plain object-fit, and
+ * whose pixels are readable. Anything else takes the embedded path as before. Content painted
+ * over such a video (a caption, a play button) is drawn under it: an accepted loss, rare on the
+ * pages this is for, and the reason this is not done for <canvas> as well. A fixed or sticky
+ * element over it (a nav it scrolls under) would be the common case of that, so a video one
+ * overlaps is embedded for that frame instead: see floatingRects.
+ */
+function compositable(video: HTMLVideoElement): boolean {
+  const vs = getComputedStyle(video)
+  if (vs.visibility !== 'visible') return false
+  if (!['fill', 'contain', 'cover'].includes(vs.objectFit)) return false
+  if (vs.objectPosition !== '50% 50%') return false
+  for (const corner of [vs.borderTopLeftRadius, vs.borderTopRightRadius, vs.borderBottomLeftRadius, vs.borderBottomRightRadius]) {
+    if (parseFloat(corner) !== 0) return false
+  }
+  for (let el: Element | null = video; el; el = el.parentElement) {
+    const cs = getComputedStyle(el)
+    if (cs.transform !== 'none' || cs.opacity !== '1' || cs.filter !== 'none') return false
+    if (cs.clipPath !== 'none' || cs.mixBlendMode !== 'normal') return false
+    const mask = cs.getPropertyValue('mask-image') || cs.getPropertyValue('-webkit-mask-image')
+    if (mask && mask !== 'none') return false
+  }
+  // Cross-origin without CORS: drawing it would taint the scratch canvas, and a tainted canvas
+  // makes new VideoFrame() throw. One pixel is enough to find out.
+  try {
+    const probe = video.ownerDocument.createElement('canvas')
+    probe.width = probe.height = 1
+    const ctx = probe.getContext('2d')
+    if (!ctx) return false
+    ctx.drawImage(video, 0, 0, 1, 1)
+    ctx.getImageData(0, 0, 1, 1)
+  } catch {
+    return false
+  }
+  return true
+}
+
+/** The video's content box and its visible part, in viewport coordinates. */
+function overlayFor(video: HTMLVideoElement): VideoOverlay {
+  const r = video.getBoundingClientRect()
+  const cs = getComputedStyle(video)
+  const px = (v: string) => parseFloat(v) || 0
+  const box = {
+    x: r.left + px(cs.borderLeftWidth) + px(cs.paddingLeft),
+    y: r.top + px(cs.borderTopWidth) + px(cs.paddingTop),
+    w: r.width - px(cs.borderLeftWidth) - px(cs.paddingLeft) - px(cs.paddingRight) - px(cs.borderRightWidth),
+    h: r.height - px(cs.borderTopWidth) - px(cs.paddingTop) - px(cs.paddingBottom) - px(cs.borderBottomWidth),
+  }
+  // object-fit: where the frame lands inside the box. Centred, the only position allowed.
+  const vw = video.videoWidth
+  const vh = video.videoHeight
+  let dest = box
+  if (cs.objectFit !== 'fill') {
+    const scale = (cs.objectFit === 'contain' ? Math.min : Math.max)(box.w / vw, box.h / vh)
+    const w = vw * scale
+    const h = vh * scale
+    dest = { x: box.x + (box.w - w) / 2, y: box.y + (box.h - h) / 2, w, h }
+  }
+  // Visible part: the content box, cut by every scrolling or clipping ancestor's padding box.
+  let x0 = box.x
+  let y0 = box.y
+  let x1 = box.x + box.w
+  let y1 = box.y + box.h
+  for (let el = video.parentElement; el; el = el.parentElement) {
+    const o = getComputedStyle(el)
+    if (o.overflowX === 'visible' && o.overflowY === 'visible') continue
+    const p = el.getBoundingClientRect()
+    const left = p.left + el.clientLeft
+    const top = p.top + el.clientTop
+    x0 = Math.max(x0, left)
+    y0 = Math.max(y0, top)
+    x1 = Math.min(x1, left + el.clientWidth)
+    y1 = Math.min(y1, top + el.clientHeight)
+  }
+  return { video, dest, clip: { x: x0, y: y0, w: Math.max(0, x1 - x0), h: Math.max(0, y1 - y0) } }
+}
+
+/**
+ * Fixed and sticky elements, which commonly sit over a scrolling video (a nav). A composited
+ * video would be drawn over them, so a video one of them overlaps is embedded instead for that
+ * frame. Only asked for when the subtree holds a video: it is a computed-style sweep.
+ */
+function floatingRects(pairs: readonly ElementPair[]): { el: Element; rect: DOMRect }[] {
+  const out: { el: Element; rect: DOMRect }[] = []
+  for (const { src } of pairs) {
+    const pos = getComputedStyle(src).position
+    if (pos === 'fixed' || pos === 'sticky') out.push({ el: src, rect: src.getBoundingClientRect() })
+  }
+  return out
+}
+
+function overlapsFloating(video: HTMLVideoElement, floating: { el: Element; rect: DOMRect }[]): boolean {
+  const v = video.getBoundingClientRect()
+  return floating.some(
+    ({ el, rect: r }) =>
+      !el.contains(video) && r.left < v.right && v.left < r.right && r.top < v.bottom && v.top < r.bottom,
+  )
+}
+
+function handleVideo(
+  pair: ElementPair,
+  report: CaptureReport,
+  overlays: VideoOverlay[] | null,
+  floating: { el: Element; rect: DOMRect }[],
+): void {
   const src = pair.src as HTMLVideoElement
   const dst = pair.dst
   const doc = dst.ownerDocument
   const box = src.getBoundingClientRect()
   const w = src.videoWidth
   const h = src.videoHeight
+
+  if (overlays && w > 0 && h > 0 && !overlapsFloating(src, floating) && compositable(src)) {
+    // An empty box holds its place in the layout; the frame is drawn over it afterwards.
+    overlays.push(overlayFor(src))
+    dst.replaceWith(placeholderFor(pair, box, 'transparent'))
+    return
+  }
 
   const data =
     w > 0 && h > 0 ? snapshot(doc, (ctx) => ctx.drawImage(src, 0, 0, w, h), w, h) : null
@@ -239,8 +374,11 @@ export async function replaceUnserializable(
   pairs: readonly ElementPair[],
   cache: ResourceCache,
   report: CaptureReport,
+  /** Where composited videos go; null embeds every video, the pre-2026-10-11 behaviour. */
+  overlays: VideoOverlay[] | null = [],
 ): Promise<void> {
   const jobs: Promise<void>[] = []
+  let floating: { el: Element; rect: DOMRect }[] | undefined
   for (const pair of pairs) {
     const { src, dst } = pair
     // Inline styles resolve against the DOCUMENT, unlike a stylesheet's own rules.
@@ -252,7 +390,8 @@ export async function replaceUnserializable(
     } else if (src instanceof HTMLCanvasElement) {
       handleCanvas(pair, report)
     } else if (src instanceof HTMLVideoElement) {
-      handleVideo(pair, report)
+      floating ??= floatingRects(pairs)
+      handleVideo(pair, report, overlays, floating)
     } else if (src instanceof HTMLIFrameElement) {
       // An iframe inside foreignObject renders blank no matter what; a cross-origin one we
       // could not read even in principle. Out of scope by decision, placeholdered and counted.

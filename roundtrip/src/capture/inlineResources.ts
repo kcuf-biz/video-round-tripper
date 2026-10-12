@@ -30,7 +30,7 @@ import { countBrokenReferences, snapshotAncestorContext, type AncestorContext } 
 import { collectCss, bytesToBase64, mimeFor } from './cssResources.ts'
 import { rewriteStateRules, STATE_BASE_CSS, syncInteractionState } from './interactionState.ts'
 import { pairDescendants, pairElements, type ElementPair } from './pairs.ts'
-import { replaceUnserializable } from './replaceUnserializable.ts'
+import { replaceUnserializable, type VideoOverlay } from './replaceUnserializable.ts'
 import { emptyReport, type CaptureReport } from './report.ts'
 import { syncScrollState } from './positioning.ts'
 import { flattenShadowRoots } from './shadowDom.ts'
@@ -252,14 +252,18 @@ export interface PreparedClone {
   context: AncestorContext
   /** What this capture could not reproduce. */
   report: CaptureReport
+  /** Videos to draw over the rasterized SVG, in document order: see replaceUnserializable.ts. */
+  overlays: VideoOverlay[]
 }
 
 export async function prepareClone(
   source: Element,
   clone: Element,
   cache: ResourceCache,
+  opts: { compositeVideo?: boolean } = {},
 ): Promise<PreparedClone> {
   const report = emptyReport()
+  const overlays: VideoOverlay[] = []
 
   /*
    * ONE document-level getAnimations() for the whole capture, shadow subtrees included, rather
@@ -277,7 +281,7 @@ export async function prepareClone(
     for (const { src } of pairs) if (src.shadowRoot) addShadowAnimations(animations, src.shadowRoot)
     freezeAnimations(pairs, animations)
     syncScrollState(source, pairs)
-    await replaceUnserializable(pairs, cache, report)
+    await replaceUnserializable(pairs, cache, report, opts.compositeVideo === false ? null : overlays)
     // Last, and recursive: it is the only pass that adds nodes with no source counterpart.
     return flattenShadowRoots(pairs, cache, report, runPasses, pairDescendants)
   }
@@ -300,5 +304,5 @@ export async function prepareClone(
   report.missingFonts = cache.stats.missingFonts
   report.blockedImages += cache.stats.blockedImages
   report.lostDeclarations += cache.stats.lostDeclarations
-  return { extraCss, context, report }
+  return { extraCss, context, report, overlays }
 }
