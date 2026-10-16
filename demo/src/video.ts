@@ -7,7 +7,8 @@ import { createForeignObjectSource, mountRoundTrip, type CaptureSource } from '@
  *   - COMPOSITED: left as an empty box in the SVG and drawn onto the frame afterwards. Any plain
  *     box video that nothing fixed or sticky overlaps.
  *   - EMBEDDED: the current frame as a PNG data: URI in an <img> inside the SVG. Everything else
- *     (transformed, faded, filtered, masked, rounded, or under a sticky/fixed element).
+ *     (transformed, faded, filtered, masked, rounded, or under a sticky/fixed element). On WebKit
+ *     the frame is held to 256x256 worth of pixels, under the threshold below (embedSize).
  *
  * WHY TWO (2026-10-12, measured on the author's iPhone with this page's predecessor, the site's
  * ?videodebug): iOS Safari decodes a large image nested in an SVG-as-image in the BACKGROUND
@@ -178,6 +179,7 @@ const render = () => {
     '',
     'composited / embedded: a real capture of the stage, cropped to the first clip',
     'NNNpx: a 240px svg holding one fresh frame of that size (iOS drops >256px)',
+    'on iOS, embedded should now hold like composited: its frame is capped at 256x256',
     previous ? `\nprevious run, saved ${previous}` : '',
   ].join('\n')
 }
