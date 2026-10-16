@@ -1,5 +1,5 @@
 import { useEffect, useState, type RefObject } from 'react'
-import type { RoundTripHandle, RoundTripStats } from '@video-round-tripper/roundtrip'
+import type { RoundTripHandle, RoundTripStats } from '@kcuf.biz/video-round-tripper'
 
 /**
  * What the stage is doing, read off <RoundTrip>'s ref. Polled, because stats() is a snapshot

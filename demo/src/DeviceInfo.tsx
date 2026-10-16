@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { encodeSize, probeCodec, resolveDials, type CodecDials } from '@video-round-tripper/roundtrip'
+import { encodeSize, probeCodec, resolveDials, type CodecDials } from '@kcuf.biz/video-round-tripper'
 import { describeMosh, type PickedCodec } from './Controls.tsx'
 
 /**

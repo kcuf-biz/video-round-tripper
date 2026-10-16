@@ -1,38 +1,62 @@
 # video-round-tripper
 
-Round-trips a live web page through a video codec and paints the result back over it.
+Have you ever stared at your website on screen share and thought "boy that looks great"? Then video-round-tripper is for you. 
 
-The point is not fidelity. The point is to put video compression artifacts into a web page
-experience and see what they do to it: blocking, banding, ringing, chroma bleed on saturated
-type, an interface that macroblocks when you scroll and settles when you stop.
+VRT takes a live webpage, sends it through video codec, then puts it back on a canvas over top of everything on the page. It paints directly over the existing content and pointer events pass through, so your page still works the same as before. 
 
 ```tsx
-import { RoundTrip } from '@video-round-tripper/roundtrip'
+import { RoundTrip } from '@kcuf.biz/video-round-tripper'
 
 <RoundTrip>
   <YourPage />
 </RoundTrip>
 ```
 
-That bare form is the intended one. With no dials set, the piece probes the device, picks a
-codec, and fills in coarseness, GOP and mosh from that codec's own defaults — see
+The component works out of the can if you skip the optional configuration. It probes the device for what codecs exist on it and picks a default configuration for a combination of speed and video quality (bad video quality). Read more about the defaults here: 
 [Per-codec defaults](#per-codec-defaults-and-the-codec-order).
 
 ## Install
 
-Not on any registry, and not going on one. Consumption is a tarball.
+```sh
+npm install @kcuf.biz/video-round-tripper
+```
+
+Or skip the install and drop it onto any page with a script tag:
+
+```html
+<script src="https://cdn.jsdelivr.net/npm/@kcuf.biz/video-round-tripper@0.1/dist/roundtrip.iife.js"></script>
+<script>
+  RoundTripCore.mountRoundTrip(document.body)
+</script>
+```
+
+React is a peer, `^18.3.1 || ^19`, and **optional**: the `./core` entry and the IIFE contain
+no React at all and typecheck with no `@types/react` installed.
+
+| entry | what it is |
+|---|---|
+| `@kcuf.biz/video-round-tripper` | the React component, plus everything below |
+| `@kcuf.biz/video-round-tripper/core` | `createRoundTrip` / `mountRoundTrip`, framework-free |
+| `@kcuf.biz/video-round-tripper/iife` | one self-contained file, global `RoundTripCore` |
+
+No CSS to import. The stylesheet is a string injected once per document as `<style data-rt>`,
+because a `.css` import is a build-tool contract and an injected `<script>` has no way to
+honour it.
+
+### From source
+
+To try unreleased changes, pack a tarball from this repo and point a project at it:
 
 ```sh
-# in this repo
-npm run pack     # -> roundtrip/video-round-tripper-roundtrip-0.1.0.tgz
+npm run pack     # -> roundtrip/kcuf.biz-video-round-tripper-0.1.0.tgz
 ```
 
 ```jsonc
 // in the consuming project's package.json
 {
   "dependencies": {
-    "@video-round-tripper/roundtrip":
-      "file:../video-round-tripper/roundtrip/video-round-tripper-roundtrip-0.1.0.tgz"
+    "@kcuf.biz/video-round-tripper":
+      "file:../video-round-tripper/roundtrip/kcuf.biz-video-round-tripper-0.1.0.tgz"
   }
 }
 ```
@@ -41,25 +65,12 @@ npm run pack     # -> roundtrip/video-round-tripper-roundtrip-0.1.0.tgz
 re-packing the same version the consumer needs `npm install --force` (or a version bump) to
 pick the new bytes up — a plain `npm install` will silently reuse the old ones.
 
-React is a peer, `^18.3.1 || ^19`, and **optional**: the `./core` entry and the IIFE contain
-no React at all and typecheck with no `@types/react` installed.
-
-| entry | what it is |
-|---|---|
-| `@video-round-tripper/roundtrip` | the React component, plus everything below |
-| `@video-round-tripper/roundtrip/core` | `createRoundTrip` / `mountRoundTrip`, framework-free |
-| `@video-round-tripper/roundtrip/iife` | one self-contained file, global `RoundTripCore` |
-
-No CSS to import. The stylesheet is a string injected once per document as `<style data-rt>`,
-because a `.css` import is a build-tool contract and an injected `<script>` has no way to
-honour it.
-
 ## Usage
 
 ### React (18 or 19)
 
 ```tsx
-import { RoundTrip } from '@video-round-tripper/roundtrip'
+import { RoundTrip } from '@kcuf.biz/video-round-tripper'
 
 export function Page() {
   return (
@@ -70,16 +81,13 @@ export function Page() {
 }
 ```
 
-Give the root a bounded height (`className` + `height: 100dvh`, say) if you want the content
-to scroll *inside* it with the canvas pinned. With an unbounded root the rule is inert and the
-page scrolls the canvas away instead of under it. Scrolling is the strongest motion the piece
-gets, so this is worth doing.
+Give the root a bounded height (`className` + `height: 100dvh`, say) if you want the content to scroll *inside* it with the canvas pinned. With an unbounded root the rule is inert and the page scrolls the canvas away instead of under it. Still useful for localized areas of this effect, but scrolling gets you the most bang for your buck so I recommend it. 
 
 ### Astro island
 
 ```astro
 ---
-import { RoundTrip } from '@video-round-tripper/roundtrip'
+import { RoundTrip } from '@kcuf.biz/video-round-tripper'
 ---
 <RoundTrip client:load coarseness={0.8} className="stage">
   <slot />
@@ -105,7 +113,7 @@ stylesheet, or an inline `style={{ height: '100dvh' }}` all work.
 ### A plain page, no framework
 
 ```js
-import { mountRoundTrip } from '@video-round-tripper/roundtrip/core'
+import { mountRoundTrip } from '@kcuf.biz/video-round-tripper/core'
 
 const handle = mountRoundTrip(document.querySelector('#app'), { coarseness: 0.8 })
 // handle.tune({ coarseness: 0.5 })   live dials, no rebuild
@@ -127,14 +135,15 @@ size its `rem`s mean — and the ground it sits on, `body`'s or `html`'s backgro
 is carried into the capture. Style the page on `body` the ordinary way; there is no need to
 move it onto a wrapper element for the round tripper's sake.
 
-### Injecting into a page you do not own
+### Using it on someone else's page
 
 ```js
 // paste into the console, or inject as a <script>
 RoundTripCore.mountRoundTrip(document.body, {})
 ```
 
-after loading `dist/roundtrip.iife.js`. It defines the global `RoundTripCore` with the same
+after loading the IIFE (the script tag under [Install](#install), or `dist/roundtrip.iife.js` from
+the package). It defines the global `RoundTripCore` with the same
 surface as the `./core` entry. Two things will stop it and neither is worth fighting: a page
 served over plain `http://` (WebCodecs is a secure-context API — `VideoEncoder` is simply
 `undefined`) and a strict `Content-Security-Policy` that refuses the injected script or the
@@ -144,59 +153,48 @@ served over plain `http://` (WebCodecs is a secure-context API — `VideoEncoder
 
 | prop | what it does |
 |---|---|
-| `coarseness` | 0–1. The main dial. Mapped per codec — see `quantizer.ts`. |
-| `encodeScale` | 0–1. Encode below display resolution and let the canvas upscale. Cheap, very effective. |
-| `declaredFramerate` | The lie. Tell the rate controller 60 while feeding it 6 and it starves itself. |
-| `gop` | `'infinite'` never sends another keyframe, so error never gets corrected. |
-| `mosh` | Drops keyframe chunks *between* encoder and decoder, so deltas apply to a stale reference. The classic bloom. `keepEveryNthKeyframe` lets one back through on a rhythm, which is the only thing that clears the bloom on AVC/HEVC — their decoders survive the drop instead of dying and triggering the pipeline's recovery keyframe. |
+| `coarseness` | 0–1. A spectrum of presets configured for each codec with some combination of the below props. Higher makes the effect stronger. Mapped per codec — see `quantizer.ts`. |
+| `encodeScale` | 0–1. Encode below display resolution and let the canvas upscale. Very effective; it makes encoding cheaper, not capture. |
+| `gop` | Frames between keyframes, or `'infinite'` for none after the first. **G**roup **O**f **P**ictures. With mosh enabled, longer GOPs produce more artifacting before there's a chance for the image to fix itself. Defaults to 20 on AVC/HEVC; on AV1/VP9 it follows `coarseness`. |
+| `mosh` | Good old fashioned datamoshing. Drops keyframe chunks *between* encoder and decoder, so P frames apply to a stale reference. `keepEveryNthKeyframe` lets one back through on a rhythm, which is the only thing that clears the bloom on AVC/HEVC — their decoders survive the drop instead of dying and triggering the pipeline's recovery keyframe. |
+| `captureFps` | The frame rate at which to capture the page. Default 30. |
+| `declaredFramerate` | Only used in bitrate modes. The frame rate we tell the encoder to expect; if this is higher than captured FPS it will allocate fewer bits to each frame and compress them harder.  |
+| `rawQuantizer` | Set the quantizer directly, bypassing the `coarseness` setting. Does nothing on VP9/AV1 by default, since those don't use a per-frame quantizer. |
+| `bitrate` | Pins the bitrate in the bitrate modes (AV1/VP9 by default). Unlike `coarseness` it doesn't scale with the window, so it looks heavier on a big screen and lighter on a small one. Changing it rebuilds the stage. |
+| `source` | Provide a custom capture source. |
 | `codec` | A family (`'avc'`), a raw codec string, or `'auto'` (default) to probe. |
 | `codecPreference` | The family order `'auto'` sweeps. Defaults to `CODEC_PREFERENCE`. |
+| `preferMoshable` | Take H.264/HEVC in any mode the device offers, before the look-first order. Turn it on with `mosh`. Changing it rebuilds the stage. |
 | `captureMode` | `'continuous'` or `'on-interaction'`. |
 | `disabled` | Bypass. Defaults to on under `prefers-reduced-motion`. |
 | `onCodec` | Called once per pipeline build with the codec the probe picked and the dials resolved against it — the only way to read the values a left-undefined dial landed on. |
 
-`coarseness`, `gop` and `mosh` are the three with per-codec defaults. Leaving one `undefined`
-is how you ask for the default; `0`, `false` and `'infinite'` are explicit answers and win.
+`coarseness`, `gop` and `mosh` are the three with per-codec defaults. Leaving one `undefined` uses the default.
 
 ## Per-codec defaults, and the codec order
 
-The probe order is **`avc → hevc → av1 → vp9`**, always, and it is not about speed (all four
-are realtime here: at 864x544, avc1 4.1ms/frame, vp09 4.2, av01 5.2). It is about which ones
-can produce the look.
+The probe order is **`avc → hevc → vp9 → av1`** and the order is not about speed (all four are realtime here: at 864x544, avc1 4.1ms/frame, vp09 4.2, av01 5.2). It's about which ones produce the more interesting effects. 
 
-Moshing is a *decoder* phenomenon — the whole effect is what a decoder does with a delta whose
-keyframe it never received. H.264 and HEVC reset their entropy coder (CABAC) at every slice,
-so a delta that arrives after a dropped IDR still **parses** perfectly: only the reference
-pixels are wrong, the motion vectors drag stale texture around, and you get the classic smear.
-VP9 and AV1 instead carry backward-adapted probability contexts *across* frames, and the
-keyframe is what resets them — drop it and the decoder's contexts no longer match the
-encoder's, so the deltas are bit-level gibberish rather than wrong-but-valid pixels. VP9's
-decoder rejects the very first post-drop delta (0 moshed frames, software and hardware alike).
-AV1's hardware decoder emits one or two frames of garbage arranged in the encoder's tile grid
-and then errors. Neither is a bug and no configuration changes it; `CLAUDE.md` has the
-measurements.
+Each codec is first tried in the mode it looks best in: AVC and HEVC with a fixed quantizer, VP9 and AV1 on a starved bitrate. So on a device whose H.264 can't take a quantizer (iPhones, Safari in general) you get VP9, which stays smooth and crunchy, rather than an H.264 that stutters. Pass `preferMoshable` to ask for H.264 in whatever mode the device has instead, which is what you want with `mosh` on.
 
-So the defaults differ by family:
+AVC and HEVC tend to produce more interesting artifacts because they care less if they are broken. Rather than breaking outright on a missing keyframe, they can still continue to decode movement data from the delta frames. AV1 and VP9 are both a bit newer and a bit more robust, but this makes them handle errors more gracefully and produce less interesting artifacts. So for those we essentially do the inverse: we starve them on a fixed bitrate. Keyframes are bit-heavy, so they come out exceptionally blocky, then the picture slowly heals until the next one. Coarseness sets how starved and how often. Here's a better explanation from Claude:
+
+> Moshing is a *decoder* phenomenon — the whole effect is what a decoder does with a delta whose keyframe it never received. H.264 and HEVC reset their entropy coder (CABAC) at every slice, so a delta that arrives after a dropped IDR still **parses** perfectly: only the reference pixels are wrong, the motion vectors drag stale texture around, and you get the classic smear. VP9 and AV1 instead carry backward-adapted probability contexts *across* frames, and the keyframe is what resets them — drop it and the decoder's contexts no longer match the encoder's, so the deltas are bit-level gibberish rather than wrong-but-valid pixels. VP9's decoder rejects the very first post-drop delta (0 moshed frames, software and hardware alike). AV1's hardware decoder emits one or two frames of garbage arranged in the encoder's tile grid and then errors.
+
+So the defaults differ by family, the goal being to try to get satisfying artifacts:
 
 | family | coarseness | gop | mosh |
 |---|---|---|---|
 | avc, hevc | 0.78 | 20 | drop every keyframe, keeping every 3rd — bloom, collapse, snap back |
-| av1, vp9 | 0.78 | `infinite` | off; moshing is opt-in because it does not produce the look |
+| av1, vp9 | 0.78 | follows coarseness (about 5 at 0.78) | off; moshing is opt-in because it does not produce the look |
 
-They are resolved *after* the probe, because that is the first moment the family is known. A
-codec string's level is derived from the coded area for the same reason: `avc1.42001f` is
-Baseline 3.1, caps at 921,600 px, and silently vanishes from the probe on any laptop viewport.
+They are resolved *after* the probe, because that is the first moment the family is known. A codec string's level is derived from the coded area for the same reason: `avc1.42001f` is Baseline 3.1, caps at 921,600 px, and silently vanishes from the probe on any laptop viewport.
 
-**The decoder is expected to die under moshing and comes back on its own.** Dropping a
-keyframe leaves later deltas referencing state the decoder never got; a conformant decoder
-answers with a decoding error, and a `VideoDecoder` that errors is closed. The pipeline
-rebuilds it, asks the encoder for a keyframe and lets that one through. Bloom, collapse, snap
-to clean, bloom again — that cycle *is* datamoshing, not a fault being papered over.
+**The decoder is expected to die under moshing and comes back on its own.** Dropping a keyframe leaves later deltas referencing state the decoder never got; a conformant decoder answers with a decoding error, and a `VideoDecoder` that errors is closed. The pipeline rebuilds it, asks the encoder for a keyframe and lets that one through.
 
 ## Stats
 
-A page that wants to show what the stage is doing polls `stats()` — on the vanilla handle and
-on the controller from `createRoundTrip`. There is no need to reach into the canvas for any of it.
+A page that wants to show what the stage is doing polls `stats()` — on the vanilla handle and on the controller from `createRoundTrip`.
 
 ```js
 handle.stats()
@@ -218,9 +216,7 @@ handle.stats()
 
 ## The degradation report
 
-The piece is made of things rendering wrong on purpose, which makes an accidental failure
-invisible: a grey rectangle where a photo should be reads as an artifact. So every capture
-counts what it had to give up on.
+Count the number of things that didn't make it in to or out of the round tripper.
 
 ```js
 handle.report()
@@ -228,11 +224,7 @@ handle.report()
 //   brokenReferences: 1, ancestorBackgroundImages: 0 }
 ```
 
-Available on the vanilla handle and on the controller from `createRoundTrip`. `undefined`
-means there is nothing to report *on* yet — the codec probe is async and no frame has been
-captured — which is a different answer from zeroes. (A page in a background tab reports
-`undefined` forever: capture runs on `requestAnimationFrame`, which Chrome suspends entirely
-when the tab is hidden. That is correct behaviour, not a failure.)
+Available on the vanilla handle and on the controller from `createRoundTrip`. Will be `undefined` if the codec probe is incomplete and no frame has been captured yet. (A page in a background tab reports `undefined` forever: capture runs on `requestAnimationFrame`, which Chrome suspends entirely when the tab is hidden.)
 
 - `blockedImages` — images, canvases and videos replaced by a flat grey block: CORS refused,
   or the canvas was tainted.
@@ -247,17 +239,11 @@ when the tab is hidden. That is correct behaviour, not a failure.)
   capture's own (`html`/`body` are always carried). Its colour is carried; the image would be
   positioned against a box the clone does not have, so it is left out and counted.
 
-A capture whose markup an XML parser cannot read loses the whole frame rather than one node,
-so capture strips what HTML tolerates and XML does not — comments containing `--`, framework
-directive attributes like Alpine's `@click` and `:class`, control characters. If a frame still
-fails to decode, the error names the parser's reason and the offending markup instead of the
-browser's bare "The source image cannot be decoded.
-`demo/hostile/` is a page with one specimen per case, and shows the report live.
+The page's markup needs to be able to be parsed by an XML parser, the whole frame will fail if it doesn't. So the capture strips anything in HTML that is incompatible with XML. Comments containing `--`, framework directive attributes like Alpine's `@click` and `:class`, control characters. If a frame fails to decode for a different reason, the error will name it and the offending markup to help debugging. There's a demo page at `demo/hostile/` with one specimen per case where you can see the failures as well as the report.
 
 ## What cannot work
 
-Not "not yet" — these are structural, and each one degrades to a visible grey placeholder or a
-fallback rather than throwing.
+The following can't be encoded by the round tripper and will fail to gray placeholders instead:
 
 - **iframes.** The rasterizer serializes an SVG and loads it through `<img>`; that document is
   not allowed to load subresources, let alone a nested browsing context. A same-origin iframe
@@ -284,38 +270,21 @@ fallback rather than throwing.
 
 ## The two ideas it is built on
 
-**Occlusion, not hiding.** The children stay fully rendered and fully interactive. The canvas
-is an opaque sibling laid on top with `pointer-events: none` and `aria-hidden="true"`, so the
-browser's own hit-testing delivers clicks, hover, focus, selection and IME straight to the real
-element underneath. No event forwarding, no coordinate mapping — and synthesized events could
-not drive `:hover`, `:focus-visible` or native text selection anyway.
+**Everything is still there under the canvas.** The children stay fully rendered and fully interactive. The canvas is an opaque sibling laid on top with `pointer-events: none` and `aria-hidden="true"`, so the browser's own hit-testing delivers clicks, hover, focus, selection and IME straight to the real element underneath. No event forwarding, no coordinate mapping — and synthesized events could not drive `:hover`, `:focus-visible` or native text selection anyway.
 
-This is deliberately *not* `opacity: 0`. Transparency preserves the same interaction properties,
-but it breaks capture: rasterizers apply opacity during paint, so a transparent subtree encodes
-as transparent pixels. You cannot capture what you have made invisible.
+This is deliberately not `opacity: 0`. If we made everything `opacity: 0` it would be transparent so a renderer couldn't capture it!
 
-The effect that falls out of this is the piece: hovering a button fires the real `:hover`, which
-lands in the next captured frame, and reaches you several frames late and artifact-ridden.
-
-**The encoder is misconfigured on purpose.** A normal pipeline is tuned to hide artifacts; this
-one is tuned to produce them. Low bitrate, coarse quantizer, long GOP so error accumulates, and
-optional keyframe suppression. Those are props, not constants.
+**Bad on purpose.** There is probably a way to configure a video pipeline to produce decent looking realtime video capture from a webpage. But that isn't the goal. The goal is to look bad, but in a cool way 😎
 
 ## Capture
 
-There is no fast, permissionless browser API that rasterizes arbitrary live DOM to frames. This
-uses element-scoped `foreignObject` rasterization serialized to a data URI — measured at **8ms
-median / 18ms p95 (~125fps)** on the demo page in Chrome 150, untainted, with full font fidelity.
-That is ~3x faster than the best library tried, with no dependency.
+This part mostly goes over my head so I'll leave it to Claude:
 
-`getDisplayMedia()` was rejected: it captures the composite, which now includes the opaque
-overlay canvas, so it feeds itself an infinite video-feedback mirror. (A legitimate effect to
-reach for deliberately — just not as the default.)
+> There is no fast, permissionless browser API that rasterizes arbitrary live DOM to frames. This uses element-scoped `foreignObject` rasterization serialized to a data URI — measured at **8ms median / 18ms p95 (~125fps)** on the demo page in Chrome 150, untainted, with full font fidelity. That is ~3x faster than the best library tried, with no dependency.
 
-Everything that separates "works on the page we authored" from "works on any page" lives in
-`roundtrip/src/capture/`: stylesheet inlining, `<img>`/`<canvas>`/`<video>` replacement, shadow
-DOM flattening, scroll/fixed/sticky positioning, form state. `inlineResources.ts` composes the
-passes and documents the order they have to run in.
+> `getDisplayMedia()` was rejected: it captures the composite, which now includes the opaque overlay canvas, so it feeds itself an infinite video-feedback mirror. (A legitimate effect to reach for deliberately — just not as the default.)
+
+> Everything that separates "works on the page we authored" from "works on any page" lives in `roundtrip/src/capture/`: stylesheet inlining, `<img>`/`<canvas>`/`<video>` replacement, shadow DOM flattening, scroll/fixed/sticky positioning, form state. `inlineResources.ts` composes the passes and documents the order they have to run in.
 
 ## Development
 

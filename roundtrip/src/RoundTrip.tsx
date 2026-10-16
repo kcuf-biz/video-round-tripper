@@ -38,13 +38,24 @@ export interface RoundTripProps {
   /** Family order to sweep when codec is 'auto'. Defaults to CODEC_PREFERENCE (avc first). */
   codecPreference?: readonly CodecFamily[]
   /**
+   * Probe for a family that moshes (AVC, then HEVC) in ANY mode before the look-first order, which
+   * otherwise prefers VP9 on a device whose AVC has no quantizer mode. Turn it on with mosh.
+   * Construction-time: changing it rebuilds.
+   */
+  preferMoshable?: boolean
+  /**
    * THE dial. 0 = nearly clean, 1 = falls apart. Mapped to a per-codec QP in ./quantizer.ts.
    * Left undefined, it takes the picked family's default from ./codecs.ts.
    */
   coarseness?: number
   /** Bypass `coarseness` with a raw per-codec quantizer value. Advanced. */
   rawQuantizer?: number
-  /** Used only when quantizer mode is unsupported. Deliberately starved. */
+  /**
+   * Pins the bitrate in the bitrate modes: AV1/VP9's default constant bitrate, or whatever the
+   * probe fell back to when quantizer mode was unsupported. Replaces the bitrate `coarseness`
+   * would derive, which scales with the frame size; this does not. Construction-time:
+   * changing it rebuilds the pipeline.
+   */
   bitrate?: number
   /**
    * The lie. Configure the rate controller for this framerate while feeding it far fewer
@@ -130,6 +141,7 @@ export const RoundTrip = forwardRef<RoundTripHandle, RoundTripProps>(function Ro
     captureFps = 30,
     codec = 'auto',
     codecPreference,
+    preferMoshable,
     coarseness,
     rawQuantizer,
     bitrate,
@@ -186,6 +198,7 @@ export const RoundTrip = forwardRef<RoundTripHandle, RoundTripProps>(function Ro
       captureMode,
       codec,
       codecPreference,
+      preferMoshable,
       bitrate,
       declaredFramerate,
       encodeScale,
@@ -215,7 +228,7 @@ export const RoundTrip = forwardRef<RoundTripHandle, RoundTripProps>(function Ro
      * of. captureMode changes the event wiring, so it does rebuild, which is correct.
      */
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [off, source, captureMode, codec, codecPreference, bitrate, declaredFramerate, encodeScale])
+  }, [off, source, captureMode, codec, codecPreference, preferMoshable, bitrate, declaredFramerate, encodeScale])
 
   useEffect(() => {
     controllerRef.current?.tune({ coarseness, rawQuantizer, gop, mosh, captureFps })

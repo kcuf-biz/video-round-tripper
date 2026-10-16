@@ -248,8 +248,11 @@ export function lostDeclarations(rule: CSSRule): boolean {
   const style = (rule as Partial<CSSStyleRule>).style
   if (style) {
     for (let i = 0; i < style.length; i++) {
-      const name = style[i]!
-      if (!name.startsWith('--') && style.getPropertyValue(name) === '') return true
+      // item(), not style[i]: an @position-try rule's style is a CSSPositionTryDescriptors,
+      // which in Chrome reports a length but has no indexed getter, so style[0] is undefined.
+      // GitHub's issue pages carry a dozen of them, and every frame threw.
+      const name = style.item(i)
+      if (name && !name.startsWith('--') && style.getPropertyValue(name) === '') return true
     }
   }
   const nested = (rule as Partial<CSSGroupingRule>).cssRules

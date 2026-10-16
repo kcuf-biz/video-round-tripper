@@ -16,11 +16,14 @@ import { gopFor, RATE_CONTROL } from './quantizer.ts'
  * for. AV1 drops resolve as tile gibberish and VP9's mosh is a guaranteed no-op. HEVC behaves
  * like AVC and is the natural second choice.
  *
- * Deliberately NOT mosh-dependent. The codec is frozen at the encoder's configure() call, so
- * ordering by the mosh config would rebuild the pipeline — and force a keyframe, wiping the
- * accumulated error the piece is made of — every time the mosh toggle moved.
+ * VP9 ahead of AV1 (2026-10-09, the author): where AVC has no quantizer mode the stage falls to them,
+ * and VP9 is the one more devices can encode (Safari on iOS encodes it; AV1, as far as we know,
+ * it does not) and the cheaper of the two in software.
+ *
+ * The ORDER is not mosh-dependent; the probe's strategy can be (`preferMoshable` in
+ * probe.ts), and only a caller that asks for it pays the rebuild a strategy change costs.
  */
-export const CODEC_PREFERENCE: readonly CodecFamily[] = ['avc', 'hevc', 'av1', 'vp9']
+export const CODEC_PREFERENCE: readonly CodecFamily[] = ['avc', 'hevc', 'vp9', 'av1']
 
 const FAMILIES = new Set<string>(['avc', 'hevc', 'av1', 'vp9'])
 

@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useRef, useState } from 'react'
-import { RoundTrip, type CodecChoice, type CodecDials, type RoundTripHandle } from '@video-round-tripper/roundtrip'
+import { RoundTrip, type CodecChoice, type CodecDials, type RoundTripHandle } from '@kcuf.biz/video-round-tripper'
 import {
   Controls,
   DEFAULTS,

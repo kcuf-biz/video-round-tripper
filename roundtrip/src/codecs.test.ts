@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest'
 import { CODEC_DEFAULTS, CODEC_PREFERENCE, codecStringsFor, isCodecFamily, resolveDials } from './codecs.ts'
 
 describe('CODEC_PREFERENCE', () => {
-  it('leads with AVC, because it is the only family that moshes into the classic look', () => {
-    expect([...CODEC_PREFERENCE]).toEqual(['avc', 'hevc', 'av1', 'vp9'])
+  it('leads with AVC (the classic mosh), and puts VP9 before AV1 (more devices encode it)', () => {
+    expect([...CODEC_PREFERENCE]).toEqual(['avc', 'hevc', 'vp9', 'av1'])
   })
 })
 

@@ -63,6 +63,13 @@ export interface RoundTripCoreOptions extends RoundTripDials {
   codec?: string | 'auto'
   /** Family order to sweep when codec is 'auto'. Defaults to CODEC_PREFERENCE. */
   codecPreference?: readonly CodecFamily[]
+  /**
+   * Probe for a family that moshes (AVC, then HEVC) in ANY mode before the look-first order, which
+   * otherwise prefers VP9 on a device whose AVC has no quantizer mode. Turn it on with mosh.
+   * Construction-time: changing it rebuilds.
+   */
+  preferMoshable?: boolean
+  /** Pins the bitrate in the bitrate modes instead of deriving it from coarseness. See RoundTripProps. */
   bitrate?: number
   encodeScale?: number
   /** Status transitions, for whatever is drawing the host element's [data-status]. */
@@ -184,6 +191,7 @@ export function createRoundTrip(opts: RoundTripCoreOptions): RoundTripController
     captureMode = 'continuous',
     codec = 'auto',
     codecPreference,
+    preferMoshable = false,
     bitrate,
     encodeScale = 1,
     onStatus,
@@ -224,6 +232,11 @@ export function createRoundTrip(opts: RoundTripCoreOptions): RoundTripController
   let paintedCount = 0
   let builds = 0
   const paintMeter = createRateMeter()
+  // What the starvation guard learned, per encoder: family + acceleration + mode. NOT the codec
+  // string, whose AVC level follows the frame area, so a resize would look like a new encoder
+  // and starve all over again.
+  const boostKey = (c: CodecChoice) => `${c.family}|${c.hardwareAcceleration}|${c.bitrateMode}`
+  let learnedBoost: { key: string; boost: number } = { key: '', boost: 1 }
 
   const setStatus = (status: RoundTripStatus, message: string) => {
     if (disposed) return
@@ -262,8 +275,17 @@ export function createRoundTrip(opts: RoundTripCoreOptions): RoundTripController
     let inFlight = false
     let detachWake: (() => void) | undefined
 
+    // The status line only has room for the message, which on its own can be untraceable
+    // ("Cannot read properties of undefined (reading 'startsWith')" took a stack from a
+    // special build to find). So the whole error goes to the console as well, once per distinct
+    // message per build: a capture failure repeats every frame and would flood it.
+    const logged = new Set<string>()
     const fail = (e: Error) => {
       if (cancelled) return
+      if (!logged.has(e.message)) {
+        logged.add(e.message)
+        console.error('[round-tripper]', e)
+      }
       setStatus('error', e.message)
     }
 
@@ -274,6 +296,7 @@ export function createRoundTrip(opts: RoundTripCoreOptions): RoundTripController
         framerate: framerate(),
         codec: codec === 'auto' ? undefined : codec,
         codecPreference,
+        preferMoshable,
         bitrate,
       })
       if (cancelled) return
@@ -308,6 +331,12 @@ export function createRoundTrip(opts: RoundTripCoreOptions): RoundTripController
         bitrate,
         gop: resolved.gop,
         mosh: resolved.mosh,
+        // A rebuild (resize, rotation) keeps what the last build learned about this encoder,
+        // rather than re-starving it for a few seconds to find the same floor again.
+        bitrateBoost: learnedBoost.key === boostKey(choice) ? learnedBoost.boost : 1,
+        onBitrateBoost: (boost) => {
+          learnedBoost = { key: boostKey(choice), boost }
+        },
         onPicture: (frame) => {
           try {
             if (!cancelled) {
@@ -422,8 +451,12 @@ export function createRoundTrip(opts: RoundTripCoreOptions): RoundTripController
     const h = content.offsetHeight
     if (sameSize(size, w, h)) return
     size = { w, h }
+    rebuild()
+  }
+  function rebuild(): void {
+    if (disposed || !size) return
     stop()
-    start(encodeSize(w, h, encodeScale), contentSize(w, h, encodeScale))
+    start(encodeSize(size.w, size.h, encodeScale), contentSize(size.w, size.h, encodeScale))
   }
   const ro = new ResizeObserver(() => {
     window.clearTimeout(debounce)

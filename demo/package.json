@@ -9,7 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@video-round-tripper/roundtrip": "*",
+    "@kcuf.biz/video-round-tripper": "*",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },
