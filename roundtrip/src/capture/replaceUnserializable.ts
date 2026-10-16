@@ -299,6 +299,44 @@ function overlapsFloating(video: HTMLVideoElement, floating: { el: Element; rect
   )
 }
 
+/**
+ * Pixels the embedded snapshot of a video gets: never more than its box (the SVG renders at CSS
+ * px, so the rest is thrown away), and under iOS Safari's background-decode threshold where that
+ * applies.
+ *
+ * WHY THE BUDGET (2026-10-12). iOS Safari draws a large image nested in an SVG-as-image blank
+ * until a background decode finishes, and a video frame is a new image on every grab, so above
+ * the threshold the embedded clip was missing from most frames. Measured on the author's iPhone, one
+ * fresh frame in a tiny SVG: kept 100% at 64, 128 and 256px square, 0-25% at 384 and 540px. So
+ * 256x256 is the largest size known to be safe, and it is applied as an AREA, keeping the aspect.
+ * Compositing (VideoOverlay) avoids the question for a plain box; this is what keeps the EMBEDDED
+ * fallback (a video under a fixed nav, or transformed) from flickering there. Chrome keeps every
+ * size, so it gets only the box cap and stays sharp.
+ */
+export const WEBKIT_EMBED_BUDGET = 256 * 256
+
+export function embedSize(
+  w: number,
+  h: number,
+  boxW: number,
+  boxH: number,
+  budget = Infinity,
+): { width: number; height: number } {
+  let s = 1
+  if (boxW > 0 && boxH > 0) s = Math.min(s, Math.max(boxW / w, boxH / h))
+  if (w * h * s * s > budget) s = Math.sqrt(budget / (w * h))
+  return { width: Math.max(1, Math.round(w * s)), height: Math.max(1, Math.round(h * s)) }
+}
+
+/*
+ * Every browser on iOS is WebKit, and so is Safari on macOS; Chrome, Edge and the rest on other
+ * platforms say "Chrome" or "Android" in the UA. No feature test exists for decode timing.
+ */
+const isWebKit =
+  typeof navigator !== 'undefined' &&
+  /AppleWebKit/.test(navigator.userAgent) &&
+  !/Chrome|Chromium|Android/.test(navigator.userAgent)
+
 function handleVideo(
   pair: ElementPair,
   report: CaptureReport,
@@ -319,8 +357,11 @@ function handleVideo(
     return
   }
 
+  const size = embedSize(w, h, box.width, box.height, isWebKit ? WEBKIT_EMBED_BUDGET : Infinity)
   const data =
-    w > 0 && h > 0 ? snapshot(doc, (ctx) => ctx.drawImage(src, 0, 0, w, h), w, h) : null
+    w > 0 && h > 0
+      ? snapshot(doc, (ctx) => ctx.drawImage(src, 0, 0, size.width, size.height), size.width, size.height)
+      : null
 
   if (data === null) {
     // Not loaded yet, or cross-origin without CORS — drawImage succeeds and toDataURL throws.
