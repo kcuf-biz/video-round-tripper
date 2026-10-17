@@ -5,3 +5,7 @@ logs/
 .DS_Store
 *.tgz
 package.json.packbak
+
+# Licensed fonts that may not be in a public repository (ABC Areal, Dinamo). Dev only: see
+# localFonts() in site/vite.config.ts.
+site/.fonts-local/
