@@ -203,9 +203,11 @@ export interface VideoOverlay {
  * transforms, fades, filters, masks or blends, with square corners and a plain object-fit, and
  * whose pixels are readable. Anything else takes the embedded path as before. Content painted
  * over such a video (a caption, a play button) is drawn under it: an accepted loss, rare on the
- * pages this is for, and the reason this is not done for <canvas> as well. A fixed or sticky
- * element over it (a nav it scrolls under) would be the common case of that, so a video one
- * overlaps is embedded for that frame instead: see floatingRects.
+ * pages this is for, and the reason this is not done for <canvas> as well. So a video that
+ * anything may be painted over is embedded for that frame instead: a fixed or sticky element
+ * overlapping it (a nav it scrolls under; see floatingRects), or any element LATER in the
+ * document whose box overlaps it (a title set over a hero video, 2026-10-18; see laterOverlaps).
+ * Embedded, the clip keeps the page's stacking; on WebKit it is held under the decode budget.
  */
 function compositable(video: HTMLVideoElement): boolean {
   const vs = getComputedStyle(video)
@@ -291,6 +293,25 @@ function floatingRects(pairs: readonly ElementPair[]): { el: Element; rect: DOMR
   return out
 }
 
+/**
+ * Whether an element after the video in document order (so painted over it, short of z-index
+ * games) overlaps its box. Ancestors come before it and its own children (<source>) are inside
+ * it, so neither counts. Costs one getBoundingClientRect per later element, and only runs for a
+ * video that could otherwise be composited.
+ */
+function laterOverlaps(pairs: readonly ElementPair[], index: number, video: HTMLVideoElement): boolean {
+  const v = video.getBoundingClientRect()
+  for (let j = index + 1; j < pairs.length; j++) {
+    const el = pairs[j].src
+    if (video.contains(el) || el.contains(video)) continue
+    const r = el.getBoundingClientRect()
+    if (r.width > 0 && r.height > 0 && r.left < v.right && v.left < r.right && r.top < v.bottom && v.top < r.bottom) {
+      return true
+    }
+  }
+  return false
+}
+
 function overlapsFloating(video: HTMLVideoElement, floating: { el: Element; rect: DOMRect }[]): boolean {
   const v = video.getBoundingClientRect()
   return floating.some(
@@ -341,7 +362,7 @@ function handleVideo(
   pair: ElementPair,
   report: CaptureReport,
   overlays: VideoOverlay[] | null,
-  floating: { el: Element; rect: DOMRect }[],
+  covered: () => boolean,
 ): void {
   const src = pair.src as HTMLVideoElement
   const dst = pair.dst
@@ -350,7 +371,7 @@ function handleVideo(
   const w = src.videoWidth
   const h = src.videoHeight
 
-  if (overlays && w > 0 && h > 0 && !overlapsFloating(src, floating) && compositable(src)) {
+  if (overlays && w > 0 && h > 0 && compositable(src) && !covered()) {
     // An empty box holds its place in the layout; the frame is drawn over it afterwards.
     overlays.push(overlayFor(src))
     dst.replaceWith(placeholderFor(pair, box, 'transparent'))
@@ -420,7 +441,8 @@ export async function replaceUnserializable(
 ): Promise<void> {
   const jobs: Promise<void>[] = []
   let floating: { el: Element; rect: DOMRect }[] | undefined
-  for (const pair of pairs) {
+  for (let i = 0; i < pairs.length; i++) {
+    const pair = pairs[i]
     const { src, dst } = pair
     // Inline styles resolve against the DOCUMENT, unlike a stylesheet's own rules.
     jobs.push(inlineStyleAttribute(dst, src.ownerDocument.baseURI, cache, report))
@@ -431,8 +453,11 @@ export async function replaceUnserializable(
     } else if (src instanceof HTMLCanvasElement) {
       handleCanvas(pair, report)
     } else if (src instanceof HTMLVideoElement) {
-      floating ??= floatingRects(pairs)
-      handleVideo(pair, report, overlays, floating)
+      const video = src
+      handleVideo(pair, report, overlays, () => {
+        floating ??= floatingRects(pairs)
+        return overlapsFloating(video, floating) || laterOverlaps(pairs, i, video)
+      })
     } else if (src instanceof HTMLIFrameElement) {
       // An iframe inside foreignObject renders blank no matter what; a cross-origin one we
       // could not read even in principle. Out of scope by decision, placeholdered and counted.
