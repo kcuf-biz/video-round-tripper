@@ -280,17 +280,42 @@ function overlayFor(video: HTMLVideoElement): VideoOverlay {
 }
 
 /**
- * Fixed and sticky elements, which commonly sit over a scrolling video (a nav). A composited
- * video would be drawn over them, so a video one of them overlaps is embedded instead for that
- * frame. Only asked for when the subtree holds a video: it is a computed-style sweep.
+ * Fixed and sticky elements, which commonly sit over a scrolling video (a nav), as the boxes they
+ * actually paint (see paintedRects). A composited video would be drawn over them, so a video one
+ * of them overlaps is embedded instead for that frame. Only asked for when the subtree holds a
+ * video: it is a computed-style sweep.
  */
 function floatingRects(pairs: readonly ElementPair[]): { el: Element; rect: DOMRect }[] {
   const out: { el: Element; rect: DOMRect }[] = []
   for (const { src } of pairs) {
     const pos = getComputedStyle(src).position
-    if (pos === 'fixed' || pos === 'sticky') out.push({ el: src, rect: src.getBoundingClientRect() })
+    if (pos === 'fixed' || pos === 'sticky') {
+      for (const rect of paintedRects(src)) out.push({ el: src, rect })
+    }
   }
   return out
+}
+
+/**
+ * Where an element actually paints, as boxes. A transparent wrapper (no background, border,
+ * shadow or outline, and no text of its own) paints only through its children, so it stands for
+ * their boxes instead of its own. The common case is a full-width fixed nav whose mark and
+ * buttons sit at the edges: its own box covers a centred hero video at the top of the page, but
+ * nothing it draws does, and treating the whole box as cover sent that video down the slower
+ * embedded path on every frame (2026-10-18, the marketing page, 16fps against 21).
+ */
+function paintedRects(el: Element): DOMRect[] {
+  const cs = getComputedStyle(el)
+  const paintsBox =
+    cs.backgroundImage !== 'none' ||
+    !/^(transparent|rgba\(0, 0, 0, 0\))$/.test(cs.backgroundColor) ||
+    parseFloat(cs.borderTopWidth) + parseFloat(cs.borderRightWidth) + parseFloat(cs.borderBottomWidth) + parseFloat(cs.borderLeftWidth) > 0 ||
+    cs.boxShadow !== 'none' ||
+    (cs.outlineStyle !== 'none' && parseFloat(cs.outlineWidth) > 0) ||
+    Array.from(el.childNodes).some((n) => n.nodeType === Node.TEXT_NODE && n.textContent!.trim() !== '') ||
+    el.children.length === 0
+  if (paintsBox) return [el.getBoundingClientRect()]
+  return Array.from(el.children).flatMap(paintedRects)
 }
 
 /**
