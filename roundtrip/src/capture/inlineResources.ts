@@ -22,6 +22,7 @@
 
 import {
   addShadowAnimations,
+  createKeyframeCustomsLookup,
   freezeAnimations,
   indexAnimationsByTarget,
   snapshotInheritedCustomProperties,
@@ -271,6 +272,7 @@ export async function prepareClone(
    * the document's animation list every time it is asked.
    */
   const animations = indexAnimationsByTarget(source.ownerDocument)
+  const keyframeCustoms = createKeyframeCustomsLookup()
 
   /** The four index-matched passes, plus shadow flattening, over one paired subtree. */
   const runPasses = async (pairs: ElementPair[]): Promise<string> => {
@@ -279,7 +281,7 @@ export async function prepareClone(
     // The document index cannot see into shadow trees; fold in each open root found at this
     // level so that when flattening recurses into it, its pairs find their animations (#74).
     for (const { src } of pairs) if (src.shadowRoot) addShadowAnimations(animations, src.shadowRoot)
-    freezeAnimations(pairs, animations)
+    freezeAnimations(pairs, animations, keyframeCustoms)
     syncScrollState(source, pairs)
     await replaceUnserializable(pairs, cache, report, opts.compositeVideo === false ? null : overlays)
     // Last, and recursive: it is the only pass that adds nodes with no source counterpart.
