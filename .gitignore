@@ -10,3 +10,4 @@ package.json.packbak
 # localFonts() in site/vite.config.ts.
 site/.fonts-local/
 roundtrip/README.md
+CLAUDE.local.md

@@ -14,7 +14,9 @@ export default defineConfig({
     // http:// to a tailnet IP, VideoEncoder is simply undefined and the piece cannot run.
     host: '127.0.0.1',
     // Vite rejects requests whose Host header it does not recognise (DNS-rebinding guard).
-    // Scoped to this tailnet's domain rather than `true`, which would allow any host.
+    // Scoped to Tailscale's domain rather than `true`, which would allow any host. Not to one
+    // tailnet's name, so the repo does not carry it: a .ts.net name only resolves inside its own
+    // tailnet (or to Tailscale's Funnel servers), so no outside page can rebind one to loopback.
     allowedHosts: ['.ts.net'],
   },
   build: {
