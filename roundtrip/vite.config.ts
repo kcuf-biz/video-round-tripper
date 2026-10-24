@@ -8,7 +8,7 @@ import { defineConfig } from 'vite'
  *    island just to run this — pays for no React at all.
  *
  * The package's `exports` field deliberately still points at `src`, so the demo workspace keeps
- * its no-build dev loop; `publishConfig.exports` swaps in this output at pack time. See
+ * its no-build dev loop; `distExports` swaps in this output at pack time. See
  * roundtrip/package.json.
  *
  * The IIFE lives in its own config (vite.iife.config.ts): IIFE is a single-entry format and

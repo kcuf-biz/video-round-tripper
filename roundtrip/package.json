@@ -1,15 +1,28 @@
 {
   "name": "@kcuf.biz/video-round-tripper",
-  "private": true,
   "version": "0.1.0",
   "description": "Round-trips a live web page through your device's video codec and paints the damage back on top.",
   "license": "MIT",
+  "homepage": "https://kcuf.biz/video-round-tripper/",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/kcuf-biz/video-round-tripper.git",
     "directory": "roundtrip"
   },
+  "bugs": {
+    "url": "https://github.com/kcuf-biz/video-round-tripper/issues"
+  },
+  "keywords": [
+    "webcodecs",
+    "video",
+    "codec",
+    "datamosh",
+    "glitch",
+    "compression-artifacts",
+    "react"
+  ],
   "scripts": {
+    "prepublishOnly": "npm --prefix .. run build:lib",
     "prepack": "node scripts/pack-exports.mjs apply",
     "postpack": "node scripts/pack-exports.mjs restore"
   },
@@ -18,19 +31,19 @@
     ".": "./src/index.ts",
     "./core": "./src/core/index.ts"
   },
+  "distExports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./core": {
+      "types": "./dist/core/index.d.ts",
+      "import": "./dist/core.js"
+    },
+    "./iife": "./dist/roundtrip.iife.js"
+  },
   "publishConfig": {
-    "access": "public",
-    "exports": {
-      ".": {
-        "types": "./dist/index.d.ts",
-        "import": "./dist/index.js"
-      },
-      "./core": {
-        "types": "./dist/core/index.d.ts",
-        "import": "./dist/core.js"
-      },
-      "./iife": "./dist/roundtrip.iife.js"
-    }
+    "access": "public"
   },
   "files": [
     "dist"
