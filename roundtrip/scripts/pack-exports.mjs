@@ -14,14 +14,16 @@
  * top-level `distExports` (npm ignores unknown top-level fields) rather than in publishConfig,
  * where npm 11 warns it is an unknown config that "will stop working in the next major".
  *
- * The README rides along the same way: npm shows the README in the PACKAGE folder, and the one
- * worth showing is the repo's, so `apply` copies it in and `restore` removes the copy (it is
- * git-ignored, so an interrupted pack leaves nothing to commit by mistake).
+ * The README: npm shows the README in the PACKAGE folder, and the one worth showing is the
+ * repo's. Copying it in here put it in the tarball but NOT on npmjs.com: `npm publish` reads
+ * the page's README before prepack runs (0.1.0 went out with "No README data found"). So
+ * roundtrip/README.md is a committed copy, and `apply` refuses to pack when it has drifted
+ * from the repo's.
  *
  * The original is saved next to package.json rather than reconstructed, so an interrupted pack
  * leaves something to restore from instead of a guess. `restore` is a no-op when it is absent.
  */
-import { readFile, writeFile, rm, access, copyFile } from 'node:fs/promises'
+import { readFile, writeFile, rm, access } from 'node:fs/promises'
 
 const PKG = new URL('../package.json', import.meta.url)
 const BACKUP = new URL('../package.json.packbak', import.meta.url)
@@ -30,6 +32,10 @@ const REPO_README = new URL('../../README.md', import.meta.url)
 const mode = process.argv[2]
 
 if (mode === 'apply') {
+  const [ours, repo] = await Promise.all([readFile(README, 'utf8'), readFile(REPO_README, 'utf8')])
+  if (ours !== repo) {
+    throw new Error('roundtrip/README.md differs from the repo README; run: cp README.md roundtrip/')
+  }
   const raw = await readFile(PKG, 'utf8')
   const pkg = JSON.parse(raw)
   if (!pkg.distExports) {
@@ -39,10 +45,8 @@ if (mode === 'apply') {
   pkg.exports = pkg.distExports
   delete pkg.distExports
   await writeFile(PKG, JSON.stringify(pkg, null, 2) + '\n')
-  await copyFile(REPO_README, README)
-  console.log('pack-exports: exports -> dist, README copied in')
+  console.log('pack-exports: exports -> dist')
 } else if (mode === 'restore') {
-  await rm(README, { force: true })
   try {
     await access(BACKUP)
   } catch {
