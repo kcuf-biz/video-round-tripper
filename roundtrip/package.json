@@ -1,6 +1,6 @@
 {
   "name": "@kcuf.biz/video-round-tripper",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Round-trips a live web page through your device's video codec and paints the damage back on top.",
   "license": "MIT",
   "homepage": "https://kcuf.biz/video-round-tripper/",

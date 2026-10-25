@@ -1,0 +1,22 @@
+# Tests, typecheck and the library build on every push and pull request.
+# Not build:site: it needs ABC Areal, which is never committed (see CLAUDE.md), and fails
+# without it on purpose.
+name: CI
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build:lib
