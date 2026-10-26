@@ -3,7 +3,7 @@
  *
  * WHY THIS EXISTS. The package has to have it both ways. `exports` must point at `./src/*.ts`
  * so the demo workspace consumes the TypeScript source directly with no build step — that is
- * the whole a source-only workspace pattern this repo is built on, and losing it means a rebuild
+ * the source-only workspace pattern this repo is built on, and losing it means a rebuild
  * between every edit and every reload. A tarball, though, contains only `dist` (see `files`),
  * so an `exports` map pointing at `src` resolves to nothing at all for a consumer.
  *

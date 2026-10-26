@@ -56,7 +56,7 @@ export const RATE_CONTROL: Record<CodecFamily, 'quantizer' | 'constant'> = {
  * perception is logarithmic, and a linear ramp would spend the whole top half of the slider on
  * differences nobody can see. Calibrated at 344x360 / 20fps against AVC: 20kbps there
  * (0.16 bpp/s) matches AVC at coarseness 0.78 in bytes/frame, and 200kbps (1.6) is close to
- * clean. the author-by-eye pass on /compare/ is what these numbers answer to, like FLOOR above.
+ * clean. author-by-eye pass on /compare/ is what these numbers answer to, like FLOOR above.
  */
 const BPP_CLEAN = 3.0
 const BPP_STARVED = 0.07
