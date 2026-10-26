@@ -119,7 +119,7 @@ export interface CodecDials {
  * Where each family should start, so a bare <RoundTrip> lands somewhere worth looking at on
  * whatever codec the device admits to supporting.
  *
- * AVC/HEVC get the measured "occasional bloom" row from the mosh table in CLAUDE.md (GOP 20,
+ * AVC/HEVC get the measured "occasional bloom" row from the mosh table in ARCHITECTURE.md (GOP 20,
  * drop every keyframe: 20/24 frames painted, one moshed, no decoder resets) — the classic
  * look, out of the box. AV1 and VP9 do not: AV1's mosh resolves as tile gibberish rather than
  * as displaced macroblocks, and VP9's is a guaranteed no-op under an infinite GOP, so for both

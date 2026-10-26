@@ -19,7 +19,7 @@
  *
  *  1. snapshotInheritedCustomProperties — the page animates registered @property custom
  *     properties on `:root` and a descendant consumes them through var(). This is the shape
- *     of every real page that does this (~/code/kcuf is thirteen such animations feeding one
+ *     of every real page that does this (the KCUF splash page, kcuf.biz, is thirteen such animations feeding one
  *     `--field` gradient). The animated element — <html> — is OUTSIDE the captured subtree, so
  *     no per-element pass can ever see it, and the clone inherits nothing because it is the
  *     root of its own document.

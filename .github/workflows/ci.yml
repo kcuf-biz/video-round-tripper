@@ -1,6 +1,4 @@
-# Tests, typecheck and the library build on every push and pull request.
-# Not build:site: it needs ABC Areal, which is never committed (see CLAUDE.md), and fails
-# without it on purpose.
+# Tests, typecheck, and the library and demo builds on every push and pull request.
 name: CI
 on:
   push:
@@ -20,3 +18,4 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run build:lib
+      - run: npm run build

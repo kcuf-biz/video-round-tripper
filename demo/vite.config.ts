@@ -4,19 +4,20 @@ import react from '@vitejs/plugin-react'
 export default defineConfig({
   plugins: [react()],
   server: {
-    // Dedicated port, not 5173/5174 — those collide with the other Vite projects on this
-    // machine. strictPort so a collision fails loudly instead of silently moving.
+    // A dedicated port, not Vite's default 5173, so it does not collide with other Vite
+    // projects. strictPort so a collision fails loudly instead of silently moving.
     port: 5394,
     strictPort: true,
-    // Stays bound to loopback even when reached over the tailnet: `tailscale serve`
-    // terminates TLS and proxies in, so the dev server itself is never on a network
-    // interface. That also supplies the SECURE CONTEXT that WebCodecs requires — over plain
-    // http:// to a tailnet IP, VideoEncoder is simply undefined and the piece cannot run.
+    // Stays bound to loopback even when viewed from another device: put something that
+    // terminates TLS in front of it (`npm run serve:tailnet` uses `tailscale serve`), so the
+    // dev server itself is never on a network interface. That also supplies the SECURE
+    // CONTEXT that WebCodecs requires — over plain http:// to a LAN address, VideoEncoder is
+    // simply undefined and the piece cannot run.
     host: '127.0.0.1',
     // Vite rejects requests whose Host header it does not recognise (DNS-rebinding guard).
-    // Scoped to Tailscale's domain rather than `true`, which would allow any host. Not to one
-    // tailnet's name, so the repo does not carry it: a .ts.net name only resolves inside its own
-    // tailnet (or to Tailscale's Funnel servers), so no outside page can rebind one to loopback.
+    // Add your own HTTPS hostname here; `true` would allow any host. `.ts.net` covers
+    // Tailscale: such a name only resolves inside its own tailnet (or to Tailscale's Funnel
+    // servers), so no outside page can rebind one to loopback.
     allowedHosts: ['.ts.net'],
   },
   build: {

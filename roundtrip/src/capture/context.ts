@@ -277,7 +277,7 @@ const FRAGMENT_URL = /url\(\s*["']?#([^"')\s]+)["']?\s*\)/g
  * #63 was, just with a different cause, and the report should say so.
  *
  * SVG elements only, to stay off the frame budget: one getComputedStyle per element is ~10ms
- * per thousand elements (measured under the pairing notes in CLAUDE.md), so sweeping every HTML
+ * per thousand elements (measured under the pairing notes in ARCHITECTURE.md), so sweeping every HTML
  * element for a `filter: url(#f)` would cost a big page more than the rest of capture does.
  * The miss is an HTML element reaching an SVG filter/clip-path/mask through CSS — rare, and
  * named here rather than silently uncounted.

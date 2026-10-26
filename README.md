@@ -48,7 +48,7 @@ honour it.
 To try unreleased changes, pack a tarball from this repo and point a project at it:
 
 ```sh
-npm run pack     # -> roundtrip/kcuf.biz-video-round-tripper-0.1.0.tgz
+npm run pack     # -> roundtrip/kcuf.biz-video-round-tripper-<version>.tgz
 ```
 
 ```jsonc
@@ -56,7 +56,7 @@ npm run pack     # -> roundtrip/kcuf.biz-video-round-tripper-0.1.0.tgz
 {
   "dependencies": {
     "@kcuf.biz/video-round-tripper":
-      "file:../video-round-tripper/roundtrip/kcuf.biz-video-round-tripper-0.1.0.tgz"
+      "file:../video-round-tripper/roundtrip/kcuf.biz-video-round-tripper-<version>.tgz"
   }
 }
 ```
@@ -169,11 +169,13 @@ served over plain `http://` (WebCodecs is a secure-context API — `VideoEncoder
 | `disabled` | Bypass. Defaults to on under `prefers-reduced-motion`. |
 | `onCodec` | Called once per pipeline build with the codec the probe picked and the dials resolved against it — the only way to read the values a left-undefined dial landed on. |
 
+The vanilla `mountRoundTrip(target, opts)` and `createRoundTrip(opts)` take the same options, plus `onStatus(status, message)`, called on every status change (`idle`, `running` once a frame has painted, `unsupported` where WebCodecs or every codec is missing, `error` with a message).
+
 `coarseness`, `gop` and `mosh` are the three with per-codec defaults. Leaving one `undefined` uses the default.
 
 ## Per-codec defaults, and the codec order
 
-The probe order is **`avc → hevc → vp9 → av1`** and the order is not about speed (all four are realtime here: at 864x544, avc1 4.1ms/frame, vp09 4.2, av01 5.2). It's about which ones produce the more interesting effects. 
+The probe order is **`avc → hevc → vp9 → av1`** and the order is not about speed (all four are realtime on an M4 Mac mini in Chrome: at 864x544, avc1 4.1ms/frame, vp09 4.2, av01 5.2). It's about which ones produce the more interesting effects. 
 
 Each codec is first tried in the mode it looks best in: AVC and HEVC with a fixed quantizer, VP9 and AV1 on a starved bitrate. So on a device whose H.264 can't take a quantizer (iPhones, Safari in general) you get VP9, which stays smooth and crunchy, rather than an H.264 that stutters. Pass `preferMoshable` to ask for H.264 in whatever mode the device has instead, which is what you want with `mosh` on.
 
@@ -204,7 +206,7 @@ handle.stats()
 //   painted: 809, paintFps: 19, builds: 1 }
 ```
 
-- `status` — the same values `onStatus` reports; `running` only once this build has painted.
+- `status` — the same values the vanilla `onStatus` option reports; `running` only once this build has painted.
 - `encodeSize` is the encoder's frame (even, for 4:2:0); `contentSize` is the part of it the
   content fills and is the canvas's backing size.
 - The counters and `painted` are **per build**: a resize rebuilds the encoder and they restart
@@ -221,7 +223,7 @@ Count the number of things that didn't make it in to or out of the round tripper
 ```js
 handle.report()
 // { blockedImages: 1, missingFonts: 0, closedShadowRoots: 1, iframes: 1,
-//   brokenReferences: 1, ancestorBackgroundImages: 0 }
+//   brokenReferences: 1, ancestorBackgroundImages: 0, lostDeclarations: 0 }
 ```
 
 Available on the vanilla handle and on the controller from `createRoundTrip`. Will be `undefined` if the codec probe is incomplete and no frame has been captured yet. (A page in a background tab reports `undefined` forever: capture runs on `requestAnimationFrame`, which Chrome suspends entirely when the tab is hidden.)
@@ -238,6 +240,9 @@ Available on the vanilla handle and on the controller from `createRoundTrip`. Wi
 - `ancestorBackgroundImages` — a background image on an ancestor whose box is not the
   capture's own (`html`/`body` are always carried). Its colour is carried; the image would be
   positioned against a box the clone does not have, so it is left out and counted.
+- `lostDeclarations` — CSS rules whose `var()` shorthand the browser dropped from the rule's
+  text and whose original source could not be recovered (constructed stylesheets keep none),
+  so a background or similar is missing from the capture.
 
 The page's markup needs to be able to be parsed by an XML parser, the whole frame will fail if it doesn't. So the capture strips anything in HTML that is incompatible with XML. Comments containing `--`, framework directive attributes like Alpine's `@click` and `:class`, control characters. If a frame fails to decode for a different reason, the error will name it and the offending markup to help debugging. There's a demo page at `demo/hostile/` with one specimen per case where you can see the failures as well as the report.
 
@@ -288,9 +293,13 @@ This part mostly goes over my head so I'll leave it to Claude:
 
 ## Development
 
+This repo holds two npm workspaces: `roundtrip/`, the library itself, and `demo/`, its test
+pages (`/` the React demo, `/hostile/` the capture torture test, `/compare/` the four codecs
+side by side, `/video/` the video capture paths).
+
 ```
 npm install
-npm run dev        # 127.0.0.1:5394 — /  is the demo, /hostile/ the capture torture test
+npm run dev        # the demo pages on 127.0.0.1:5394
 npm test           # pure modules, no jsdom
 npm run typecheck
 npm run build      # the demo
@@ -298,4 +307,6 @@ npm run build:lib  # roundtrip/dist — ESM entries, the IIFE, declarations
 npm run pack       # the tarball, beside dist
 ```
 
-See `CLAUDE.md` for the gotchas — several of them cost real time and none are caught by `tsc`.
+[CONTRIBUTING.md](CONTRIBUTING.md) covers the demo pages, testing (in real Chrome, and why) and
+releases. [ARCHITECTURE.md](ARCHITECTURE.md) is how it works, and the gotchas: several of them
+cost real time and none are caught by `tsc`.

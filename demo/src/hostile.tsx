@@ -206,7 +206,7 @@ function VideoFileSpec() {
  *
  * A stream has no demuxer and no network fetch behind it, so it reaches readyState 4 with
  * real dimensions even in a hidden tab (verified: rs=4, 200x120). That makes it the only way
- * to actually exercise drawImage(video) -> scratch canvas -> toDataURL on this headless box.
+ * to actually exercise drawImage(video) -> scratch canvas -> toDataURL on a headless machine.
  */
 function VideoStreamSpec() {
   const ref = useRef<HTMLVideoElement>(null)
@@ -466,7 +466,7 @@ function Specimens() {
  * `undefined` is a real answer and is shown as one: the controller resolves its codec
  * asynchronously and does not build a source until then, and no source has a report until the
  * first grab completes. In a BACKGROUNDED tab that never happens at all, because capture is
- * driven by requestAnimationFrame — see CLAUDE.md.
+ * driven by requestAnimationFrame — see ARCHITECTURE.md.
  */
 /**
  * The controller's own stats (#79), polled. This page used to count paints by wrapping

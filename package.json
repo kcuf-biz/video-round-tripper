@@ -2,26 +2,19 @@
   "name": "video-round-tripper",
   "private": true,
   "type": "module",
-  "version": "0.1.0",
   "workspaces": [
     "roundtrip",
-    "demo",
-    "site"
+    "demo"
   ],
   "scripts": {
     "dev": "npm run dev -w demo",
-    "dev:site": "npm run dev -w site",
     "serve:tailnet": "tailscale serve --bg --https=8450 http://127.0.0.1:5394",
     "serve:tailnet:off": "tailscale serve --https=8450 off",
-    "serve:site:tailnet": "tailscale serve --bg --https=8455 http://127.0.0.1:5396",
-    "serve:site:tailnet:off": "tailscale serve --https=8455 off",
     "build": "npm run build -w demo",
-    "build:site": "npm run build -w site",
-    "deploy:site": "bash scripts/deploy-site.sh",
     "build:lib": "vite build -c roundtrip/vite.config.ts && vite build -c roundtrip/vite.iife.config.ts && tsc -p roundtrip/tsconfig.build.json && node roundtrip/scripts/dts-extensions.mjs",
     "pack": "npm run build:lib && npm pack -w roundtrip --pack-destination roundtrip",
     "preview": "npm run preview -w demo",
-    "typecheck": "tsc --noEmit -p roundtrip && tsc --noEmit -p demo && tsc --noEmit -p site",
+    "typecheck": "tsc --noEmit -p roundtrip && tsc --noEmit -p demo",
     "test": "vitest run",
     "test:watch": "vitest"
   },

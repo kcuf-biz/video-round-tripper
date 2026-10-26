@@ -6,8 +6,7 @@ logs/
 *.tgz
 package.json.packbak
 
-# Licensed fonts that may not be in a public repository (ABC Areal, Dinamo). Dev only: see
-# localFonts() in site/vite.config.ts.
-site/.fonts-local/
 CLAUDE.local.md
 BACKLOG.md
+# The maintainer's own experiment scripts and notes (they assume one machine's tools).
+lab/

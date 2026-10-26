@@ -3,8 +3,8 @@ import { encodeSize, probeCodec, resolveDials, type CodecDials } from '@kcuf.biz
 import { describeMosh, type PickedCodec } from './Controls.tsx'
 
 /**
- * What this device can actually do. Worth showing because the demo is usually opened over the
- * tailnet on a device nobody can inspect directly — a phone, or a headless box's stream. The
+ * What this device can actually do. Worth showing because the demo is often opened on a device
+ * nobody can inspect directly — a phone, or a remote machine's screen. The
  * two things that decide whether the piece can run at all are both invisible otherwise:
  * whether the origin is a secure context (WebCodecs is gated on it) and which codec the
  * device actually admits to supporting.
