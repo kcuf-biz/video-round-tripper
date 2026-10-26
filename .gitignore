@@ -10,3 +10,4 @@ package.json.packbak
 # localFonts() in site/vite.config.ts.
 site/.fonts-local/
 CLAUDE.local.md
+BACKLOG.md
