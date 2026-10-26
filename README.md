@@ -2,7 +2,7 @@
 
 Have you ever stared at your website on screen share and thought "boy that looks great"? Then video-round-tripper is for you. 
 
-VRT takes a live webpage, sends it through video codec, then puts it back on a canvas over top of everything on the page. It paints directly over the existing content and pointer events pass through, so your page still works the same as before. 
+VRT takes a live webpage, sends it through a video codec, then puts it back on a canvas on top of everything on the page. It renders directly over the existing content and pointer events pass through, so your page still works the same as before. 
 
 ```tsx
 import { RoundTrip } from '@kcuf.biz/video-round-tripper'
@@ -12,7 +12,7 @@ import { RoundTrip } from '@kcuf.biz/video-round-tripper'
 </RoundTrip>
 ```
 
-The component works out of the can if you skip the optional configuration. It probes the device for what codecs exist on it and picks a default configuration for a combination of speed and video quality (bad video quality). Read more about the defaults here: 
+The component works out of the can if you skip the optional configuration. It probes the device for what codecs exist on it and picks a default configuration for a combination of speed and (intentionally bad) video quality. Read more about the defaults here: 
 [Per-codec defaults](#per-codec-defaults-and-the-codec-order).
 
 ## Install
@@ -173,11 +173,11 @@ The vanilla `mountRoundTrip(target, opts)` and `createRoundTrip(opts)` take the 
 
 `coarseness`, `gop` and `mosh` are the three with per-codec defaults. Leaving one `undefined` uses the default.
 
-## Per-codec defaults, and the codec order
+## Per-codec defaults
 
-The probe order is **`avc → hevc → vp9 → av1`** and the order is not about speed (all four are realtime on an M4 Mac mini in Chrome: at 864x544, avc1 4.1ms/frame, vp09 4.2, av01 5.2). It's about which ones produce the more interesting effects. 
+The probe order is **`avc → hevc → vp9 → av1`**. The order is based on what produces the most interesting artifacts as opposed to the speed (all four are realtime on an M4 Mac mini in Chrome: at 864x544, avc1 4.1ms/frame, vp09 4.2, av01 5.2).
 
-Each codec is first tried in the mode it looks best in: AVC and HEVC with a fixed quantizer, VP9 and AV1 on a starved bitrate. So on a device whose H.264 can't take a quantizer (iPhones, Safari in general) you get VP9, which stays smooth and crunchy, rather than an H.264 that stutters. Pass `preferMoshable` to ask for H.264 in whatever mode the device has instead, which is what you want with `mosh` on.
+Not all codecs can produce the classic datamosh effect. We start with AVC and HEVC on a fixed quantizer, which is compatible with moshing. But many devices can't handle that and will instead go for VP9. VP9 and AV1 have different artifact styles and methods of generation. To get artifacts out of VP9 and AV1 we have to cut the bitrate dramatically to starve frames to get the effect. Pass `preferMoshable` to ask for H.264 in whatever mode the device has instead, which is what you want with `mosh` on.
 
 AVC and HEVC tend to produce more interesting artifacts because they care less if they are broken. Rather than breaking outright on a missing keyframe, they can still continue to decode movement data from the delta frames. AV1 and VP9 are both a bit newer and a bit more robust, but this makes them handle errors more gracefully and produce less interesting artifacts. So for those we essentially do the inverse: we starve them on a fixed bitrate. Keyframes are bit-heavy, so they come out exceptionally blocky, then the picture slowly heals until the next one. Coarseness sets how starved and how often. Here's a better explanation from Claude:
 
