@@ -1,3 +1,5 @@
+<img width="1200" height="630" alt="image" src="https://github.com/user-attachments/assets/4180f74b-ec3d-496b-b586-0c0c641a1710" />
+
 # video-round-tripper
 
 Have you ever stared at your website on screen share and thought "boy that looks great"? Then video-round-tripper is for you. 
@@ -310,3 +312,7 @@ npm run pack       # the tarball, beside dist
 [CONTRIBUTING.md](CONTRIBUTING.md) covers the demo pages, testing (in real Chrome, and why) and
 releases. [ARCHITECTURE.md](ARCHITECTURE.md) is how it works, and the gotchas: several of them
 cost real time and none are caught by `tsc`.
+
+---
+
+[KCUF](https://kcuf.biz) is a design practice making stupid tools for stupid people
