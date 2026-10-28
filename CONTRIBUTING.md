@@ -76,7 +76,8 @@ trusted publishing, so no npm token exists anywhere:
    tag against the version, runs the typecheck and tests, and publishes.
 
 `roundtrip/README.md` is a copy of this repo's README (npm shows the package folder's README);
-packing refuses to run if they differ, so `cp README.md roundtrip/` after editing it. Before a
+packing refuses to run if they differ, so `cp README.md roundtrip/` before packing locally. CI and
+the publish workflow copy it themselves, so a README edit alone never fails a push. Before a
 release that touches the build or `exports`, pack it and install the tarball into a scratch
 project: the `exports` swap around packing has failed silently before.
 

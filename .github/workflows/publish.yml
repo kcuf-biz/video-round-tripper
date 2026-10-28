@@ -28,6 +28,8 @@ jobs:
           [ "v$v" = "$GITHUB_REF_NAME" ] || { echo "tag $GITHUB_REF_NAME but package is $v"; exit 1; }
       - run: npm run typecheck
       - run: npm test
-      # prepublishOnly runs build:lib; prepack checks the README copy and swaps exports.
+      # Publish whatever README.md says at this tag, even if the committed copy is behind.
+      # prepublishOnly then runs build:lib; prepack checks the README copy and swaps exports.
+      - run: cp README.md roundtrip/README.md
       - run: npm publish --access public
         working-directory: roundtrip
