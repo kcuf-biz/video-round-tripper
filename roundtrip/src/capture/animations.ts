@@ -19,7 +19,7 @@
  *
  *  1. snapshotInheritedCustomProperties — the page animates registered @property custom
  *     properties on `:root` and a descendant consumes them through var(). This is the shape
- *     of every real page that does this (the KCUF splash page, kcuf.biz, is thirteen such animations feeding one
+ *     of every real page that does this (one has thirteen such animations feeding one
  *     `--field` gradient). The animated element — <html> — is OUTSIDE the captured subtree, so
  *     no per-element pass can ever see it, and the clone inherits nothing because it is the
  *     root of its own document.
@@ -324,7 +324,7 @@ export function freezeAnimations(
      * The fallback, when the @keyframes rule could not be read (a cross-origin sheet, a scope
      * the lookup does not reach): every custom property on the element, at its live computed
      * value. Always correct, since it is exactly what the element has right now, but it was
-     * the unconditional behaviour until #97 measured it: on the marketing page it pinned 325
+     * the unconditional behaviour until #97 measured it: on a real page it pinned 325
      * properties across 18 animated elements, nearly all of them inherited design tokens,
      * for +2-3ms median per grab and +8.5KB of markup. See notes/97-pin-cost.md.
      */

@@ -302,7 +302,7 @@ function floatingRects(pairs: readonly ElementPair[]): { el: Element; rect: DOMR
  * their boxes instead of its own. The common case is a full-width fixed nav whose mark and
  * buttons sit at the edges: its own box covers a centred hero video at the top of the page, but
  * nothing it draws does, and treating the whole box as cover sent that video down the slower
- * embedded path on every frame (2026-10-18, the marketing page, 16fps against 21).
+ * embedded path on every frame (2026-10-18, a real page, 16fps against 21).
  */
 function paintedRects(el: Element): DOMRect[] {
   const cs = getComputedStyle(el)

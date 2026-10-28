@@ -18,4 +18,7 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run build:lib
+      # Packing runs pack-exports.mjs, which refuses when roundtrip/README.md has drifted from
+      # README.md. Checked here so drift fails a push, not the next release.
+      - run: npm pack --dry-run -w roundtrip
       - run: npm run build

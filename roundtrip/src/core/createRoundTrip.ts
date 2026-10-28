@@ -89,7 +89,7 @@ export interface RoundTripCoreOptions extends RoundTripDials {
 /**
  * What the controller is doing right now, for a page that wants to SHOW it (#79).
  *
- * The marketing page's "Your codec" panel used to read all of this from outside — codec from
+ * A real page's "Your codec" panel used to read all of this from outside — codec from
  * onCodec, sizes from the overlay canvas plus encodeSize(), paint rate by wrapping drawImage on
  * the canvas's 2D context — which broke silently whenever the core changed an internal (#75
  * moved the canvas from the encode size to the content size). Everything here is read off the

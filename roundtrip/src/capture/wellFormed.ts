@@ -7,7 +7,7 @@
  * `img.decode()` then fails with "The source image cannot be decoded." and nothing else. Not a
  * missing element: an empty frame, pointing nowhere near the cause.
  *
- * Found by use (backlog #62): kcuf's first mount produced no frames at all because of a single
+ * Found by use (#62): a real page's first mount produced no frames at all because of a single
  * `<!-- ---- section ---- -->`. Checked in Chrome 150 while fixing it, every one of these kills
  * the frame the same way:
  *

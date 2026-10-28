@@ -4,7 +4,7 @@
  *
  * The clone renders as the root of a document that contains none of its ancestors. Whatever it
  * inherited from them, or showed through from behind them, is simply not there — and none of it
- * errors. Found by use (backlog #67): the marketing page, mounted on <body>, round-tripped in
+ * errors. Found by use (#67): a real page, mounted on <body>, round-tripped in
  * black Times over the right ground, because `color` and `font-family` were set on body and body
  * is not in the captured subtree. The report said `missingFonts: 0`, which was true — no font
  * failed to load — and pointed its reader at a font-loading bug that did not exist.
@@ -18,7 +18,7 @@
  *    ancestor that moves `color` or `font-size` is covered by the same read — it was listed as
  *    an open gap under the animations pass;
  *  - the GROUND: the nearest ancestor background, including html/body's, which paint the
- *    viewport rather than their own box. That is what kcuf's `body { background: <gradient> }`
+ *    viewport rather than their own box. That is what a real page's `body { background: <gradient> }`
  *    needed and never got. Below all of it the frame is filled with the page's own `Canvas`
  *    colour, which is what a browser shows through a page with no background at all — the
  *    scratch canvas used to leave that black;
@@ -221,7 +221,7 @@ export async function snapshotAncestorContext(
    * Otherwise its image would be positioned against a box the clone does not have. The colour
    * is still exact and is carried; the image is left out and COUNTED, not approximated silently.
    *
-   * Getting the propagation rule wrong was measured on kcuf, with its field moved from .stage
+   * Getting the propagation rule wrong was measured on a real page, with its field moved from .stage
    * onto body: the first cut always took html's background when html had one, and the frame
    * came back flat maroon — html's colour — over a gradient that live filled the viewport.
    */

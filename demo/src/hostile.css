@@ -82,7 +82,7 @@ html { font-size: 20px; }
 @property --g-stop  { syntax: '<percentage>'; initial-value: 20%;  inherits: true; }
 
 /*
- * THE KCUF SHAPE, reduced to three inputs: the animation runs on :root — OUTSIDE anything the
+ * THE REAL-WORLD SHAPE, reduced to three inputs: the animation runs on :root — OUTSIDE anything the
  * capture walks — and the descendants never see its inputs at all, because var() substitution
  * happens at computed-value time here. They inherit the already-resolved `--field`, which is
  * why the capture pass snapshots resolved custom properties rather than animated inputs.

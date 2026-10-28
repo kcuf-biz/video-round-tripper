@@ -107,7 +107,7 @@ export function createForeignObjectSource(
     /*
      * An OVERLAY scrollbar (macOS, iOS, most phones) is invisible at rest in the live page but
      * the clone is a fresh scroller that paints its thumb every frame: a grey sliver pinned to
-     * the frame's right edge that nobody sees on the page itself. Measured on the marketing page,
+     * the frame's right edge that nobody sees on the page itself. Measured on a real page,
      * where it read as a light or a dark bar depending on what the scroller's own background
      * happened to be. Only when the live scrollbar takes no space: a classic scrollbar is really
      * there, and hiding it in the clone would also hand its width back to the layout.
@@ -126,7 +126,7 @@ export function createForeignObjectSource(
        * (below). The image document's viewport IS this svg's size, so it is what `vw`/`vh`
        * and every @media query in the page resolve against: sizing it to the content rect (as
        * it once was, with a viewBox doing the scaling) made encodeScale 0.5 on a 1440px window
-       * lay the clone out as a 720px viewport. The marketing page crossed its 760px phone
+       * lay the clone out as a 720px viewport. A real page crossed its 760px phone
        * breakpoint and captured the phone layout over the desktop page, misaligned with the
        * DOM underneath (the author, 2026-10-02). Before THAT there was no viewBox and the scale cropped
        * instead (a half-red, half-blue box captured solid red). Scaling in drawImage fixes both.

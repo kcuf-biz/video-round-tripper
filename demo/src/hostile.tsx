@@ -470,7 +470,7 @@ function Specimens() {
  */
 /**
  * The controller's own stats (#79), polled. This page used to count paints by wrapping
- * drawImage on the stage canvas, the same trick the marketing page's readout needed, which is
+ * drawImage on the stage canvas, the same trick a real page's readout needed, which is
  * why stats() exists. In on-interaction mode the paint rate is the pass criterion: it falls to 0
  * about 600ms after you stop touching the page and comes back the moment you move.
  */

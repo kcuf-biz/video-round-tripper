@@ -30,7 +30,7 @@ describe('keyframePropertyNames', () => {
   })
 
   it('leaves custom properties alone', () => {
-    // The kcuf case: a registered @property animated by name. Lowercasing or kebab-casing
+    // The real-world case: a registered @property animated by name. Lowercasing or kebab-casing
     // `--gAngle` would produce a property that does not exist, and setProperty would no-op.
     expect(keyframePropertyNames([{ '--g-angle': '32deg', '--gAngle': '1' }])).toEqual([
       '--g-angle',

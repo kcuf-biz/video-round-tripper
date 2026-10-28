@@ -13,7 +13,7 @@ describe('isXmlAttributeName', () => {
     }
   })
 
-  it('rejects the framework directive names that left kcuf-style pages with no frames', () => {
+  it('rejects the framework directive names that left real pages with no frames', () => {
     for (const n of ['@click', ':class', 'x-on:click', 'hx-on:click', 'v-on:click', '#ref', '1a', '']) {
       expect(isXmlAttributeName(n), n).toBe(false)
     }

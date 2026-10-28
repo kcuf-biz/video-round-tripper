@@ -57,7 +57,7 @@ export function encodeSize(
  * leaves a pad row (or column) past the content. Backlog #75: the canvas used to take the full
  * encode size as its backing store and stretch it over the odd CSS box, so the pad landed on
  * the last CSS pixel as a dark 1px line — the page's ground, or black before that was carried
- * (kcuf measured 1200x842 backing in an 841px box, last row [0,3,37]). Capture renders into
+ * (a real page measured 1200x842 backing in an 841px box, last row [0,3,37]). Capture renders into
  * this rect and repeats its edge into the pad; the canvas takes this size and draws only this
  * rect, so the pad is encoded but never shown.
  */

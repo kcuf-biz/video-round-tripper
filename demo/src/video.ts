@@ -10,8 +10,8 @@ import { createForeignObjectSource, mountRoundTrip, type CaptureSource } from '@
  *     (transformed, faded, filtered, masked, rounded, or under a sticky/fixed element). On WebKit
  *     the frame is held to 256x256 worth of pixels, under the threshold below (embedSize).
  *
- * WHY TWO (2026-10-12, measured on the author's iPhone with this page's predecessor, the site's
- * ?videodebug): iOS Safari decodes a large image nested in an SVG-as-image in the BACKGROUND
+ * WHY TWO (2026-10-12, measured on the author's iPhone with this page's predecessor, a
+ * debug view on another page): iOS Safari decodes a large image nested in an SVG-as-image in the BACKGROUND
  * and draws it blank until that finishes. A video frame is a new image every grab, so embedded
  * it is almost never ready: a 240px SVG holding one fresh frame kept it 100% at 64, 128 and
  * 256px square and 0-25% at 384 and 540px. Ruled out one at a time first, all kept 100%: SVG

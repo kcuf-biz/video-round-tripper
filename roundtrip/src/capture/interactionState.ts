@@ -3,7 +3,7 @@
  *
  * The clone renders as an SVG image, and nothing in an image is hovered, pressed or focused —
  * those are live UA states, not markup — so every rule keyed on them simply never matched.
- * Found by use (backlog #68): the marketing page's buttons highlighted in the live DOM, which
+ * Found by use (#68): a real page's buttons highlighted in the live DOM, which
  * nobody sees under the canvas, and sat at rest in the video, which is all anyone sees. On a
  * component whose premise is that the page stays usable underneath, the visible page had no
  * interaction feedback at all.
@@ -17,8 +17,8 @@
  *   :focus-visible  -> [data-rt-focus-visible]
  *   :focus-within   -> [data-rt-focus-within]
  *
- * `data-rt-` and not `data-`: the marketing page already mirrors states onto `data-hover` etc.
- * by hand (site/src/states.ts) and must keep working unchanged alongside this.
+ * `data-rt-` and not `data-`: a page may already mirror states onto `data-hover` etc. by
+ * hand, and must keep working unchanged alongside this.
  *
  * Still out of reach, by nature rather than by omission: the text caret and text selection,
  * which are not in the DOM at all.

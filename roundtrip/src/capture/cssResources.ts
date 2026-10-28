@@ -29,7 +29,7 @@ import type { ResourceCache } from './inlineResources.ts'
  * The fragment case is not like the others and was found by use (backlog #63): `fill:
  * url(#mark-row)` is how CSS reaches every SVG paint server, mask, filter and clip-path, and
  * resolving it made it `http://host/#mark-row` — a url into a different document, which the
- * SVG image cannot load. SVG treats a failed paint as `none`, so kcuf's wordmark captured at 0%
+ * SVG image cannot load. SVG treats a failed paint as `none`, so a real page's wordmark captured at 0%
  * ink with no error. Left as authored, the fragment resolves against the image document, which
  * is exactly where the cloned <linearGradient> now lives.
  */
