@@ -8,8 +8,7 @@
  * way these load, so this specimen actively distinguishes right from wrong rather than
  * merely exercising the code path.
  *
- * Font: KaTeX_Fraktur-Regular (KaTeX, MIT), copied from the woff2 that ships inside VS Code's
- * bundled markdown-language-features extension. Fraktur on purpose: a silent fallback to a
+ * Font: KaTeX_Fraktur-Regular from KaTeX (MIT; licence in fonts/LICENSE-KaTeX.txt), unmodified. Fraktur on purpose: a silent fallback to a
  * system serif is unmistakable both by eye and by glyph pixel count, which is how the Fraunces
  * regression was caught in the first place.
  */
