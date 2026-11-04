@@ -1,4 +1,4 @@
-<img width="1200" height="630" alt="image" src="https://github.com/user-attachments/assets/e328f579-1f36-4a16-92d1-185d0e751c35" />
+<img width="1200" height="630" alt="image" src="https://github.com/user-attachments/assets/fb329348-2727-4a89-9005-88c635eb3fd0" />
 
 # video-round-tripper
 
